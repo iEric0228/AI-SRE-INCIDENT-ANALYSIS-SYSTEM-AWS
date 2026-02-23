@@ -1,8 +1,8 @@
 resource "aws_dynamodb_table" "incident_store" {
-  name           = var.table_name
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "incidentId"
-  range_key      = "timestamp"
+  name         = var.table_name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "incidentId"
+  range_key    = "timestamp"
 
   attribute {
     name = "incidentId"

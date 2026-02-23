@@ -137,7 +137,7 @@ module "eventbridge" {
   project_name                 = var.project_name
   event_transformer_lambda_arn = "arn:aws:lambda:${local.region}:${local.account_id}:function:${var.project_name}-event-transformer"
   kms_key_id                   = module.secrets.kms_key_id
-  alarm_notification_topic_arn = ""  # Will be populated by cloudwatch_alarms module
+  alarm_notification_topic_arn = "" # Will be populated by cloudwatch_alarms module
 
   tags = local.common_tags
 

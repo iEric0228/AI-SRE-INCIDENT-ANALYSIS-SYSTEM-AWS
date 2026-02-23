@@ -43,9 +43,7 @@ class TestSecretsManagerConfiguration:
         assert (
             'resource "aws_secretsmanager_secret" "slack_webhook"' in secrets_main_tf
         ), "Slack webhook secret not defined"
-        assert (
-            "slack-webhook" in secrets_main_tf
-        ), "Secret name should contain 'slack-webhook'"
+        assert "slack-webhook" in secrets_main_tf, "Secret name should contain 'slack-webhook'"
         assert (
             "Slack webhook URL for incident notifications" in secrets_main_tf
         ), "Secret description mismatch"
@@ -57,9 +55,7 @@ class TestSecretsManagerConfiguration:
         assert (
             'resource "aws_secretsmanager_secret" "email_config"' in secrets_main_tf
         ), "Email config secret not defined"
-        assert (
-            "email-config" in secrets_main_tf
-        ), "Secret name should contain 'email-config'"
+        assert "email-config" in secrets_main_tf, "Secret name should contain 'email-config'"
         assert (
             "Email configuration for incident notifications" in secrets_main_tf
         ), "Secret description mismatch"
@@ -86,12 +82,10 @@ class TestSecretsManagerConfiguration:
         Validates Requirement 14.5: Rotate secrets automatically every 90 days
         """
         assert (
-            'resource "aws_secretsmanager_secret_rotation" "slack_webhook"'
-            in secrets_main_tf
+            'resource "aws_secretsmanager_secret_rotation" "slack_webhook"' in secrets_main_tf
         ), "Slack webhook rotation configuration missing"
         assert (
-            'resource "aws_secretsmanager_secret_rotation" "email_config"'
-            in secrets_main_tf
+            'resource "aws_secretsmanager_secret_rotation" "email_config"' in secrets_main_tf
         ), "Email config rotation configuration missing"
 
         # Check rotation is conditional
@@ -117,12 +111,10 @@ class TestSecretsManagerConfiguration:
         Validates Requirement 14.4: Secrets not managed in Terraform state after initial creation
         """
         assert (
-            'resource "aws_secretsmanager_secret_version" "slack_webhook"'
-            in secrets_main_tf
+            'resource "aws_secretsmanager_secret_version" "slack_webhook"' in secrets_main_tf
         ), "Slack webhook secret version not defined"
         assert (
-            'resource "aws_secretsmanager_secret_version" "email_config"'
-            in secrets_main_tf
+            'resource "aws_secretsmanager_secret_version" "email_config"' in secrets_main_tf
         ), "Email config secret version not defined"
 
         # Check lifecycle ignore_changes
@@ -137,7 +129,7 @@ class TestSecretsManagerConfiguration:
         assert (
             'variable "rotation_days"' in secrets_variables_tf
         ), "rotation_days variable not defined"
-        assert 'type        = number' in secrets_variables_tf, "rotation_days should be a number"
+        assert "type        = number" in secrets_variables_tf, "rotation_days should be a number"
         assert (
             "default     = 90" in secrets_variables_tf
         ), "Default rotation period should be 90 days"
@@ -157,12 +149,8 @@ class TestSecretsManagerConfiguration:
         """
         Test that KMS key has an alias for easier reference
         """
-        assert (
-            'resource "aws_kms_alias" "secrets"' in secrets_main_tf
-        ), "KMS key alias not defined"
-        assert (
-            "secrets" in secrets_main_tf
-        ), "KMS alias should contain 'secrets'"
+        assert 'resource "aws_kms_alias" "secrets"' in secrets_main_tf, "KMS key alias not defined"
+        assert "secrets" in secrets_main_tf, "KMS alias should contain 'secrets'"
         assert (
             "target_key_id = aws_kms_key.secrets.key_id" in secrets_main_tf
         ), "KMS alias should reference the secrets KMS key"
@@ -172,9 +160,7 @@ class TestSecretsManagerConfiguration:
         Validates Requirement 17.6: Tag all resources for cost tracking
         """
         # Check for Project tag
-        assert (
-            "AI-SRE-Portfolio" in secrets_main_tf
-        ), "Resources missing Project tag"
+        assert "AI-SRE-Portfolio" in secrets_main_tf, "Resources missing Project tag"
 
 
 class TestSecretsManagerOutputs:
@@ -214,9 +200,7 @@ class TestSecretsManagerOutputs:
         output_count = outputs_tf.count('output "')
         description_count = outputs_tf.count("description =")
 
-        assert (
-            output_count == description_count
-        ), "All outputs should have descriptions"
+        assert output_count == description_count, "All outputs should have descriptions"
 
 
 class TestSecretsManagerDocumentation:
@@ -238,9 +222,7 @@ class TestSecretsManagerDocumentation:
             readme_content = f.read()
 
         assert "## Usage" in readme_content, "README missing Usage section"
-        assert (
-            "module \"secrets\"" in readme_content
-        ), "README missing module usage example"
+        assert 'module "secrets"' in readme_content, "README missing module usage example"
 
     def test_readme_contains_iam_permissions(self, secrets_module_path):
         """
@@ -250,15 +232,11 @@ class TestSecretsManagerDocumentation:
         with open(readme_path, "r") as f:
             readme_content = f.read()
 
-        assert (
-            "## IAM Permissions" in readme_content
-        ), "README missing IAM Permissions section"
+        assert "## IAM Permissions" in readme_content, "README missing IAM Permissions section"
         assert (
             "secretsmanager:GetSecretValue" in readme_content
         ), "README missing GetSecretValue permission"
-        assert (
-            "kms:Decrypt" in readme_content
-        ), "README missing KMS Decrypt permission"
+        assert "kms:Decrypt" in readme_content, "README missing KMS Decrypt permission"
 
     def test_readme_contains_rotation_instructions(self, secrets_module_path):
         """
@@ -271,12 +249,8 @@ class TestSecretsManagerDocumentation:
         assert (
             "## Automatic Rotation" in readme_content
         ), "README missing Automatic Rotation section"
-        assert (
-            "rotation_days" in readme_content
-        ), "README missing rotation_days documentation"
-        assert (
-            "90" in readme_content
-        ), "README should mention 90-day rotation period"
+        assert "rotation_days" in readme_content, "README missing rotation_days documentation"
+        assert "90" in readme_content, "README should mention 90-day rotation period"
 
     def test_readme_contains_compliance_section(self, secrets_module_path):
         """
@@ -286,9 +260,7 @@ class TestSecretsManagerDocumentation:
         with open(readme_path, "r") as f:
             readme_content = f.read()
 
-        assert (
-            "## Compliance" in readme_content
-        ), "README missing Compliance section"
+        assert "## Compliance" in readme_content, "README missing Compliance section"
         assert "14.1" in readme_content, "README missing requirement 14.1"
         assert "14.2" in readme_content, "README missing requirement 14.2"
         assert "14.5" in readme_content, "README missing requirement 14.5"

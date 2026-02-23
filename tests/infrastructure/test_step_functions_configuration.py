@@ -49,7 +49,10 @@ def state_machine_definition():
                             },
                             "MetricsCollectionFailed": {
                                 "Type": "Pass",
-                                "Result": {"status": "failed", "error": "Metrics collection failed"},
+                                "Result": {
+                                    "status": "failed",
+                                    "error": "Metrics collection failed",
+                                },
                                 "End": True,
                             },
                         },
@@ -490,4 +493,3 @@ def test_terraform_validation():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

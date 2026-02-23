@@ -154,12 +154,12 @@ variable "lambda_log_level" {
 variable "lambda_memory_sizes" {
   description = "Memory allocation (MB) for each Lambda function"
   type = object({
-    metrics_collector         = number
-    logs_collector            = number
-    deploy_context_collector  = number
-    correlation_engine        = number
-    llm_analyzer              = number
-    notification_service      = number
+    metrics_collector        = number
+    logs_collector           = number
+    deploy_context_collector = number
+    correlation_engine       = number
+    llm_analyzer             = number
+    notification_service     = number
   })
   default = {
     metrics_collector        = 512
@@ -182,12 +182,12 @@ variable "lambda_memory_sizes" {
 variable "lambda_timeout_seconds" {
   description = "Timeout (seconds) for each Lambda function"
   type = object({
-    metrics_collector         = number
-    logs_collector            = number
-    deploy_context_collector  = number
-    correlation_engine        = number
-    llm_analyzer              = number
-    notification_service      = number
+    metrics_collector        = number
+    logs_collector           = number
+    deploy_context_collector = number
+    correlation_engine       = number
+    llm_analyzer             = number
+    notification_service     = number
   })
   default = {
     metrics_collector        = 20
@@ -456,9 +456,9 @@ variable "tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)
   default = {
-    Project     = "AI-SRE-Portfolio"
-    ManagedBy   = "Terraform"
-    Purpose     = "Incident-Analysis"
+    Project   = "AI-SRE-Portfolio"
+    ManagedBy = "Terraform"
+    Purpose   = "Incident-Analysis"
   }
 }
 

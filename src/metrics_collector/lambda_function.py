@@ -22,18 +22,19 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize CloudWatch client
-cloudwatch = boto3.client('cloudwatch')
+cloudwatch = boto3.client("cloudwatch")
 
 # Import metrics utility
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 from metrics import put_collector_success_metric
 
 
 def _log(level: str, message: str, correlation_id: str, context: Any = None, **kwargs) -> None:
     """
     Helper function for structured logging with function metadata.
-    
+
     Args:
         level: Log level (info, warning, error)
         message: Log message
@@ -41,18 +42,26 @@ def _log(level: str, message: str, correlation_id: str, context: Any = None, **k
         context: Lambda context object
         **kwargs: Additional fields to include in log
     """
-    function_name = context.function_name if context and hasattr(context, 'function_name') else os.environ.get('AWS_LAMBDA_FUNCTION_NAME', 'metrics-collector')
-    function_version = context.function_version if context and hasattr(context, 'function_version') else os.environ.get('AWS_LAMBDA_FUNCTION_VERSION', '$LATEST')
-    
+    function_name = (
+        context.function_name
+        if context and hasattr(context, "function_name")
+        else os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "metrics-collector")
+    )
+    function_version = (
+        context.function_version
+        if context and hasattr(context, "function_version")
+        else os.environ.get("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST")
+    )
+
     log_entry = {
         "message": message,
         "correlationId": correlation_id,
         "functionName": function_name,
         "functionVersion": function_version,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     log_entry.update(kwargs)
-    
+
     log_method = getattr(logger, level)
     log_method(json.dumps(log_entry))
 
@@ -60,50 +69,60 @@ def _log(level: str, message: str, correlation_id: str, context: Any = None, **k
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler for metrics collection.
-    
+
     Args:
         event: Event containing resourceArn, timestamp, namespace, and optional metricNames
         context: Lambda context object
-        
+
     Returns:
         Dictionary containing status, metrics array, and collection_duration
     """
     start_time = datetime.utcnow()
-    correlation_id = event.get('incidentId', event.get('incident', {}).get('incidentId', 'unknown'))
-    
+    correlation_id = event.get("incidentId", event.get("incident", {}).get("incidentId", "unknown"))
+
     try:
-        _log('info', "Metrics collector invoked", correlation_id, context,
-             resourceArn=event.get('resourceArn'),
-             incidentTimestamp=event.get('timestamp'))
-        
+        _log(
+            "info",
+            "Metrics collector invoked",
+            correlation_id,
+            context,
+            resourceArn=event.get("resourceArn"),
+            incidentTimestamp=event.get("timestamp"),
+        )
+
         # Extract required fields
-        resource_arn = event.get('resourceArn')
-        timestamp_str = event.get('timestamp')
-        namespace = event.get('namespace')
-        
+        resource_arn = event.get("resourceArn")
+        timestamp_str = event.get("timestamp")
+        namespace = event.get("namespace")
+
         if not resource_arn or not timestamp_str:
             raise ValueError("Missing required fields: resourceArn and timestamp")
-        
+
         # Parse timestamp
         incident_timestamp = parse_timestamp(timestamp_str)
-        
+
         # Parse resource ARN to determine namespace and dimensions if not provided
         if not namespace:
             namespace, dimensions = parse_resource_arn(resource_arn)
         else:
             _, dimensions = parse_resource_arn(resource_arn)
-        
+
         # Calculate time range (-60min to +5min)
         start_time_range, end_time_range = calculate_time_range(incident_timestamp)
-        
-        _log('info', "Calculated time range", correlation_id, context,
-             startTime=start_time_range.isoformat(),
-             endTime=end_time_range.isoformat(),
-             namespace=namespace)
-        
+
+        _log(
+            "info",
+            "Calculated time range",
+            correlation_id,
+            context,
+            startTime=start_time_range.isoformat(),
+            endTime=end_time_range.isoformat(),
+            namespace=namespace,
+        )
+
         # Determine which metrics to collect based on namespace
-        metric_names = event.get('metricNames') or get_default_metrics_for_namespace(namespace)
-        
+        metric_names = event.get("metricNames") or get_default_metrics_for_namespace(namespace)
+
         # Collect metrics
         metrics_data = []
         for metric_name in metric_names:
@@ -113,241 +132,288 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     metric_name=metric_name,
                     dimensions=dimensions,
                     start_time=start_time_range,
-                    end_time=end_time_range
+                    end_time=end_time_range,
                 )
                 if metric_data:
                     metrics_data.append(metric_data)
             except Exception as e:
-                _log('warning', f"Failed to collect metric {metric_name}", correlation_id, context,
-                     metricName=metric_name,
-                     error=str(e))
-        
+                _log(
+                    "warning",
+                    f"Failed to collect metric {metric_name}",
+                    correlation_id,
+                    context,
+                    metricName=metric_name,
+                    error=str(e),
+                )
+
         # Calculate collection duration
         collection_duration = (datetime.utcnow() - start_time).total_seconds()
-        
+
         # Log warning if no metrics found
         if not metrics_data:
-            _log('warning', "No metrics found for resource", correlation_id, context,
-                 resourceArn=resource_arn,
-                 namespace=namespace)
-        
+            _log(
+                "warning",
+                "No metrics found for resource",
+                correlation_id,
+                context,
+                resourceArn=resource_arn,
+                namespace=namespace,
+            )
+
         result = {
             "status": "success",
             "metrics": metrics_data,
-            "collectionDuration": collection_duration
+            "collectionDuration": collection_duration,
         }
-        
-        _log('info', "Metrics collection completed", correlation_id, context,
-             metricsCount=len(metrics_data),
-             duration=collection_duration)
-        
+
+        _log(
+            "info",
+            "Metrics collection completed",
+            correlation_id,
+            context,
+            metricsCount=len(metrics_data),
+            duration=collection_duration,
+        )
+
         # Emit CloudWatch metrics
-        put_collector_success_metric('metrics', True, collection_duration)
-        
+        put_collector_success_metric("metrics", True, collection_duration)
+
         return result
-        
+
     except ValueError as e:
         # Non-retryable validation error
         collection_duration = (datetime.utcnow() - start_time).total_seconds()
-        _log('error', "Validation error", correlation_id, context,
-             error=str(e),
-             errorType="ValidationException")
-        
+        _log(
+            "error",
+            "Validation error",
+            correlation_id,
+            context,
+            error=str(e),
+            errorType="ValidationException",
+        )
+
         # Emit failure metric
-        put_collector_success_metric('metrics', False, collection_duration)
-        
+        put_collector_success_metric("metrics", False, collection_duration)
+
         return {
             "status": "failed",
             "metrics": [],
             "collectionDuration": collection_duration,
-            "error": str(e)
+            "error": str(e),
         }
-        
+
     except ClientError as e:
         # ERROR HANDLING STRATEGY: Classify AWS API errors
         # Retryable: ThrottlingException, ServiceException, TooManyRequestsException
         # Non-retryable: All others (return error response with empty data)
         # AWS SDK has built-in retry logic, but Step Functions adds another layer
         collection_duration = (datetime.utcnow() - start_time).total_seconds()
-        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        
-        _log('error', "AWS API error", correlation_id, context,
-             error=str(e),
-             errorCode=error_code,
-             errorType="ClientError",
-             stackTrace=traceback.format_exc())
-        
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+
+        _log(
+            "error",
+            "AWS API error",
+            correlation_id,
+            context,
+            error=str(e),
+            errorCode=error_code,
+            errorType="ClientError",
+            stackTrace=traceback.format_exc(),
+        )
+
         # Raise retryable errors for Step Functions retry mechanism
         # Step Functions will retry with exponential backoff (2s, 4s, 8s)
-        if error_code in ['ThrottlingException', 'ServiceException', 'TooManyRequestsException']:
-            put_collector_success_metric('metrics', False, collection_duration)
+        if error_code in ["ThrottlingException", "ServiceException", "TooManyRequestsException"]:
+            put_collector_success_metric("metrics", False, collection_duration)
             raise  # Let Step Functions handle retry with backoff
-        
+
         # Non-retryable error - return error response (graceful degradation)
-        put_collector_success_metric('metrics', False, collection_duration)
-        
+        put_collector_success_metric("metrics", False, collection_duration)
+
         return {
             "status": "failed",
             "metrics": [],
             "collectionDuration": collection_duration,
-            "error": f"{error_code}: {str(e)}"
+            "error": f"{error_code}: {str(e)}",
         }
-        
+
     except Exception as e:
         # Unexpected error
         collection_duration = (datetime.utcnow() - start_time).total_seconds()
-        _log('error', "Unexpected error", correlation_id, context,
-             error=str(e),
-             errorType=type(e).__name__,
-             stackTrace=traceback.format_exc())
-        
+        _log(
+            "error",
+            "Unexpected error",
+            correlation_id,
+            context,
+            error=str(e),
+            errorType=type(e).__name__,
+            stackTrace=traceback.format_exc(),
+        )
+
         # Emit failure metric
-        put_collector_success_metric('metrics', False, collection_duration)
-        
+        put_collector_success_metric("metrics", False, collection_duration)
+
         return {
             "status": "failed",
             "metrics": [],
             "collectionDuration": collection_duration,
-            "error": str(e)
+            "error": str(e),
         }
 
 
 def parse_timestamp(timestamp_str: str) -> datetime:
     """
     Parse timestamp string to datetime object.
-    
+
     Args:
         timestamp_str: ISO-8601 timestamp string
-        
+
     Returns:
         datetime object
     """
     # Handle both with and without 'Z' suffix
-    if timestamp_str.endswith('Z'):
-        timestamp_str = timestamp_str[:-1] + '+00:00'
-    
+    if timestamp_str.endswith("Z"):
+        timestamp_str = timestamp_str[:-1] + "+00:00"
+
     return datetime.fromisoformat(timestamp_str)
 
 
 def calculate_time_range(incident_timestamp: datetime) -> Tuple[datetime, datetime]:
     """
     Calculate time range for metrics query.
-    
+
     Args:
         incident_timestamp: Time of the incident
-        
+
     Returns:
         Tuple of (start_time, end_time) for metrics query
-        
+
     Requirements: 3.1 - Query metrics from 60 minutes before to 5 minutes after
     """
     start_time = incident_timestamp - timedelta(minutes=60)
     end_time = incident_timestamp + timedelta(minutes=5)
-    
+
     return start_time, end_time
 
 
 def parse_resource_arn(resource_arn: str) -> Tuple[str, List[Dict[str, str]]]:
     """
     Parse resource ARN to determine CloudWatch namespace and dimensions.
-    
+
     Args:
         resource_arn: AWS resource ARN
-        
+
     Returns:
         Tuple of (namespace, dimensions)
-        
+
     Examples:
         arn:aws:lambda:us-east-1:123456789012:function:my-function
         -> ("AWS/Lambda", [{"Name": "FunctionName", "Value": "my-function"}])
-        
+
         arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0
         -> ("AWS/EC2", [{"Name": "InstanceId", "Value": "i-1234567890abcdef0"}])
     """
-    parts = resource_arn.split(':')
-    
+    parts = resource_arn.split(":")
+
     if len(parts) < 6:
         raise ValueError(f"Invalid ARN format: {resource_arn}")
-    
+
     service = parts[2]
     resource_part = parts[5] if len(parts) > 5 else parts[-1]
-    
+
     # Map service to CloudWatch namespace
     namespace_map = {
-        'lambda': 'AWS/Lambda',
-        'ec2': 'AWS/EC2',
-        'rds': 'AWS/RDS',
-        'ecs': 'AWS/ECS',
-        'dynamodb': 'AWS/DynamoDB',
-        'sqs': 'AWS/SQS',
-        'sns': 'AWS/SNS',
-        'apigateway': 'AWS/ApiGateway',
-        'elasticloadbalancing': 'AWS/ELB',
-        's3': 'AWS/S3'
+        "lambda": "AWS/Lambda",
+        "ec2": "AWS/EC2",
+        "rds": "AWS/RDS",
+        "ecs": "AWS/ECS",
+        "dynamodb": "AWS/DynamoDB",
+        "sqs": "AWS/SQS",
+        "sns": "AWS/SNS",
+        "apigateway": "AWS/ApiGateway",
+        "elasticloadbalancing": "AWS/ELB",
+        "s3": "AWS/S3",
     }
-    
-    namespace = namespace_map.get(service, f'AWS/{service.upper()}')
-    
+
+    namespace = namespace_map.get(service, f"AWS/{service.upper()}")
+
     # Extract resource name/ID and create dimensions
     dimensions = []
-    
-    if service == 'lambda':
+
+    if service == "lambda":
         # arn:aws:lambda:region:account:function:function-name
-        function_name = resource_part.split(':')[-1] if ':' in resource_part else resource_part.split('/')[-1]
+        function_name = (
+            resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        )
         dimensions = [{"Name": "FunctionName", "Value": function_name}]
-        
-    elif service == 'ec2':
+
+    elif service == "ec2":
         # arn:aws:ec2:region:account:instance/instance-id
-        instance_id = resource_part.split('/')[-1]
+        instance_id = resource_part.split("/")[-1]
         dimensions = [{"Name": "InstanceId", "Value": instance_id}]
-        
-    elif service == 'rds':
+
+    elif service == "rds":
         # arn:aws:rds:region:account:db:db-instance-id
-        db_instance_id = resource_part.split(':')[-1]
+        db_instance_id = resource_part.split(":")[-1]
         dimensions = [{"Name": "DBInstanceIdentifier", "Value": db_instance_id}]
-        
-    elif service == 'ecs':
+
+    elif service == "ecs":
         # arn:aws:ecs:region:account:service/cluster-name/service-name
-        parts_split = resource_part.split('/')
+        parts_split = resource_part.split("/")
         if len(parts_split) >= 3:
             cluster_name = parts_split[1]
             service_name = parts_split[2]
             dimensions = [
                 {"Name": "ClusterName", "Value": cluster_name},
-                {"Name": "ServiceName", "Value": service_name}
+                {"Name": "ServiceName", "Value": service_name},
             ]
-        
-    elif service == 'dynamodb':
+
+    elif service == "dynamodb":
         # arn:aws:dynamodb:region:account:table/table-name
-        table_name = resource_part.split('/')[-1]
+        table_name = resource_part.split("/")[-1]
         dimensions = [{"Name": "TableName", "Value": table_name}]
-    
+
     return namespace, dimensions
 
 
 def get_default_metrics_for_namespace(namespace: str) -> List[str]:
     """
     Get default metrics to collect for a given namespace.
-    
+
     Args:
         namespace: CloudWatch namespace
-        
+
     Returns:
         List of metric names
-        
+
     Requirements: 3.2 - Retrieve relevant metrics based on service
     """
     metric_map = {
-        'AWS/Lambda': ['Invocations', 'Errors', 'Duration', 'Throttles', 'ConcurrentExecutions'],
-        'AWS/EC2': ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'DiskReadBytes', 'DiskWriteBytes'],
-        'AWS/RDS': ['CPUUtilization', 'DatabaseConnections', 'FreeableMemory', 'ReadLatency', 'WriteLatency'],
-        'AWS/ECS': ['CPUUtilization', 'MemoryUtilization'],
-        'AWS/DynamoDB': ['ConsumedReadCapacityUnits', 'ConsumedWriteCapacityUnits', 'UserErrors', 'SystemErrors'],
-        'AWS/SQS': ['NumberOfMessagesSent', 'NumberOfMessagesReceived', 'ApproximateNumberOfMessagesVisible'],
-        'AWS/ApiGateway': ['Count', '4XXError', '5XXError', 'Latency']
+        "AWS/Lambda": ["Invocations", "Errors", "Duration", "Throttles", "ConcurrentExecutions"],
+        "AWS/EC2": ["CPUUtilization", "NetworkIn", "NetworkOut", "DiskReadBytes", "DiskWriteBytes"],
+        "AWS/RDS": [
+            "CPUUtilization",
+            "DatabaseConnections",
+            "FreeableMemory",
+            "ReadLatency",
+            "WriteLatency",
+        ],
+        "AWS/ECS": ["CPUUtilization", "MemoryUtilization"],
+        "AWS/DynamoDB": [
+            "ConsumedReadCapacityUnits",
+            "ConsumedWriteCapacityUnits",
+            "UserErrors",
+            "SystemErrors",
+        ],
+        "AWS/SQS": [
+            "NumberOfMessagesSent",
+            "NumberOfMessagesReceived",
+            "ApproximateNumberOfMessagesVisible",
+        ],
+        "AWS/ApiGateway": ["Count", "4XXError", "5XXError", "Latency"],
     }
-    
-    return metric_map.get(namespace, ['CPUUtilization', 'NetworkIn', 'NetworkOut'])
+
+    return metric_map.get(namespace, ["CPUUtilization", "NetworkIn", "NetworkOut"])
 
 
 def collect_metric(
@@ -355,21 +421,21 @@ def collect_metric(
     metric_name: str,
     dimensions: List[Dict[str, str]],
     start_time: datetime,
-    end_time: datetime
+    end_time: datetime,
 ) -> Optional[Dict[str, Any]]:
     """
     Collect a single metric from CloudWatch.
-    
+
     Args:
         namespace: CloudWatch namespace
         metric_name: Name of the metric
         dimensions: Metric dimensions
         start_time: Start of time range
         end_time: End of time range
-        
+
     Returns:
         Dictionary containing metric data and statistics, or None if no data
-        
+
     Requirements: 3.2, 3.3 - Retrieve and normalize metric data
     """
     try:
@@ -384,44 +450,46 @@ def collect_metric(
             StartTime=start_time,
             EndTime=end_time,
             Period=60,  # 1-minute granularity
-            Statistics=['Average', 'Maximum', 'Minimum', 'SampleCount']
+            Statistics=["Average", "Maximum", "Minimum", "SampleCount"],
         )
-        
-        datapoints = response.get('Datapoints', [])
-        
+
+        datapoints = response.get("Datapoints", [])
+
         # Return None if no data available (not an error condition)
         if not datapoints:
             return None
-        
+
         # Sort datapoints by timestamp (CloudWatch may return unsorted)
-        datapoints.sort(key=lambda x: x['Timestamp'])
-        
+        datapoints.sort(key=lambda x: x["Timestamp"])
+
         # Normalize datapoints to consistent format
         normalized_datapoints = []
         for dp in datapoints:
-            normalized_datapoints.append({
-                "timestamp": dp['Timestamp'].isoformat(),
-                "value": dp.get('Average', 0.0),
-                "unit": dp.get('Unit', 'None')
-            })
-        
+            normalized_datapoints.append(
+                {
+                    "timestamp": dp["Timestamp"].isoformat(),
+                    "value": dp.get("Average", 0.0),
+                    "unit": dp.get("Unit", "None"),
+                }
+            )
+
         # Calculate summary statistics
         statistics = calculate_statistics(datapoints)
-        
+
         return {
             "metricName": metric_name,
             "namespace": namespace,
             "datapoints": normalized_datapoints,
-            "statistics": statistics
+            "statistics": statistics,
         }
-        
+
     except ClientError as e:
-        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+
         # Retry on throttling (raise to trigger AWS SDK retry or Step Functions retry)
-        if error_code in ['ThrottlingException', 'TooManyRequestsException']:
+        if error_code in ["ThrottlingException", "TooManyRequestsException"]:
             raise
-        
+
         # Log warning for other errors but don't fail entire collection
         logger.warning(f"Failed to collect metric {metric_name}: {str(e)}")
         return None
@@ -430,34 +498,34 @@ def collect_metric(
 def calculate_statistics(datapoints: List[Dict[str, Any]]) -> Dict[str, float]:
     """
     Calculate summary statistics from datapoints.
-    
+
     Args:
         datapoints: List of CloudWatch datapoints
-        
+
     Returns:
         Dictionary containing avg, max, min, and p95 statistics
-        
+
     Requirements: 3.2 - Calculate summary statistics (avg, max, min, p95)
     """
     if not datapoints:
         return {"avg": 0.0, "max": 0.0, "min": 0.0, "p95": 0.0}
-    
+
     # Extract average values
-    values = [dp.get('Average', 0.0) for dp in datapoints]
-    
+    values = [dp.get("Average", 0.0) for dp in datapoints]
+
     # Calculate statistics
     avg = sum(values) / len(values)
     max_val = max(values)
     min_val = min(values)
-    
+
     # Calculate 95th percentile
     sorted_values = sorted(values)
     p95_index = int(len(sorted_values) * 0.95)
     p95 = sorted_values[p95_index] if p95_index < len(sorted_values) else sorted_values[-1]
-    
+
     return {
         "avg": round(avg, 2),
         "max": round(max_val, 2),
         "min": round(min_val, 2),
-        "p95": round(p95, 2)
+        "p95": round(p95, 2),
     }

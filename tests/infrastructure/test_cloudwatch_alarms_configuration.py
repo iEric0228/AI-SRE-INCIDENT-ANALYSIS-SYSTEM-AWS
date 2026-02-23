@@ -46,7 +46,7 @@ class TestCloudWatchAlarmsModuleStructure:
     def test_module_files_exist(self, cloudwatch_alarms_module_path):
         """Test that all required module files exist."""
         required_files = ["main.tf", "variables.tf", "outputs.tf", "README.md"]
-        
+
         for filename in required_files:
             file_path = cloudwatch_alarms_module_path / filename
             assert file_path.exists(), f"Required file {filename} not found"
@@ -55,7 +55,7 @@ class TestCloudWatchAlarmsModuleStructure:
         """Test that README.md exists and contains documentation."""
         readme_path = cloudwatch_alarms_module_path / "README.md"
         assert readme_path.exists(), "README.md not found"
-        
+
         content = readme_path.read_text()
         assert len(content) > 100, "README.md is too short"
         assert "CloudWatch Alarms Module" in content, "README missing module title"
@@ -91,7 +91,10 @@ class TestWorkflowAlarms:
 
     def test_workflow_failures_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that workflow failures alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "workflow_failures"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "workflow_failures"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "ExecutionsFailed" in cloudwatch_alarms_main_tf
         assert "AWS/States" in cloudwatch_alarms_main_tf
 
@@ -103,7 +106,10 @@ class TestWorkflowAlarms:
 
     def test_workflow_timeouts_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that workflow timeouts alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "workflow_timeouts"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "workflow_timeouts"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "ExecutionsTimedOut" in cloudwatch_alarms_main_tf
 
     def test_workflow_alarms_use_state_machine_arn(self, cloudwatch_alarms_main_tf):
@@ -116,18 +122,27 @@ class TestLLMAnalyzerAlarms:
 
     def test_llm_analyzer_errors_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that LLM analyzer errors alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_errors"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_errors"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "llm_analyzer_function_name" in cloudwatch_alarms_main_tf
 
     def test_llm_analyzer_timeouts_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that LLM analyzer timeouts alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_timeouts"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_timeouts"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "Duration" in cloudwatch_alarms_main_tf
         assert "threshold           = 35000" in cloudwatch_alarms_main_tf  # 35 seconds
 
     def test_llm_analyzer_throttles_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that LLM analyzer throttles alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_throttles"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_throttles"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "Throttles" in cloudwatch_alarms_main_tf
 
     def test_llm_analyzer_alarms_use_function_name(self, cloudwatch_alarms_main_tf):
@@ -140,20 +155,29 @@ class TestNotificationServiceAlarms:
 
     def test_notification_errors_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that notification service errors alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "notification_errors"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "notification_errors"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "notification_service_function_name" in cloudwatch_alarms_main_tf
 
     def test_notification_delivery_failures_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that notification delivery failures alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "notification_delivery_failures"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "notification_delivery_failures"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "NotificationDeliveryFailures" in cloudwatch_alarms_main_tf
 
     def test_notification_delivery_metric_filter_exists(self, cloudwatch_alarms_main_tf):
         """Test that custom metric filter for notification delivery failures exists."""
-        assert 'resource "aws_cloudwatch_log_metric_filter" "notification_delivery_failures"' in cloudwatch_alarms_main_tf
-        assert 'deliveryStatus.slack' in cloudwatch_alarms_main_tf
-        assert 'deliveryStatus.email' in cloudwatch_alarms_main_tf
-        assert 'failed' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_log_metric_filter" "notification_delivery_failures"'
+            in cloudwatch_alarms_main_tf
+        )
+        assert "deliveryStatus.slack" in cloudwatch_alarms_main_tf
+        assert "deliveryStatus.email" in cloudwatch_alarms_main_tf
+        assert "failed" in cloudwatch_alarms_main_tf
 
 
 class TestCollectorAlarms:
@@ -161,12 +185,18 @@ class TestCollectorAlarms:
 
     def test_collector_failures_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that collector failures alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "collector_failures"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "collector_failures"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "CollectorFailures" in cloudwatch_alarms_main_tf
 
     def test_collector_failures_metric_filter_exists(self, cloudwatch_alarms_main_tf):
         """Test that custom metric filter for collector failures exists."""
-        assert 'resource "aws_cloudwatch_log_metric_filter" "collector_failures"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_log_metric_filter" "collector_failures"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "TaskFailed" in cloudwatch_alarms_main_tf
         assert "metrics-collector" in cloudwatch_alarms_main_tf
         assert "logs-collector" in cloudwatch_alarms_main_tf
@@ -174,7 +204,10 @@ class TestCollectorAlarms:
 
     def test_correlation_engine_errors_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that correlation engine errors alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "correlation_engine_errors"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "correlation_engine_errors"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "correlation_engine_function_name" in cloudwatch_alarms_main_tf
 
 
@@ -183,7 +216,10 @@ class TestDynamoDBAlarms:
 
     def test_dynamodb_throttles_alarm_exists(self, cloudwatch_alarms_main_tf):
         """Test that DynamoDB throttles alarm is defined."""
-        assert 'resource "aws_cloudwatch_metric_alarm" "dynamodb_throttles"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "dynamodb_throttles"'
+            in cloudwatch_alarms_main_tf
+        )
         assert "UserErrors" in cloudwatch_alarms_main_tf
         assert "AWS/DynamoDB" in cloudwatch_alarms_main_tf
 
@@ -200,7 +236,7 @@ class TestAlarmConfiguration:
         # Count alarm resources
         alarm_count = cloudwatch_alarms_main_tf.count('resource "aws_cloudwatch_metric_alarm"')
         assert alarm_count >= 10, f"Expected at least 10 alarms, found {alarm_count}"
-        
+
         # Verify alarm_actions reference ops_alerts topic
         assert "alarm_actions = [aws_sns_topic.ops_alerts.arn]" in cloudwatch_alarms_main_tf
 
@@ -269,10 +305,11 @@ class TestModuleVariables:
             "dynamodb_table_name",
             "kms_key_id",
         ]
-        
+
         for var_name in required_variables:
-            assert f'variable "{var_name}"' in cloudwatch_alarms_variables_tf, \
-                f"Required variable {var_name} not defined"
+            assert (
+                f'variable "{var_name}"' in cloudwatch_alarms_variables_tf
+            ), f"Required variable {var_name} not defined"
 
     def test_ops_email_variable_optional(self, cloudwatch_alarms_variables_tf):
         """Test that ops_email variable is optional with default empty string."""
@@ -306,10 +343,11 @@ class TestModuleOutputs:
             "dynamodb_throttles_alarm_arn",
             "correlation_engine_errors_alarm_arn",
         ]
-        
+
         for output_name in expected_outputs:
-            assert f'output "{output_name}"' in cloudwatch_alarms_outputs_tf, \
-                f"Expected output {output_name} not defined"
+            assert (
+                f'output "{output_name}"' in cloudwatch_alarms_outputs_tf
+            ), f"Expected output {output_name} not defined"
 
     def test_dashboard_outputs(self, cloudwatch_alarms_outputs_tf):
         """Test that dashboard outputs are defined."""
@@ -327,7 +365,7 @@ class TestRequirementCompliance:
         """
         readme_path = cloudwatch_alarms_module_path / "README.md"
         readme_content = readme_path.read_text()
-        
+
         # Verify README documents compliance
         assert "11.4" in readme_content, "README should reference requirement 11.4"
         assert "workflow failures" in readme_content.lower()
@@ -342,13 +380,22 @@ class TestRequirementCompliance:
         3. Notification delivery failures
         """
         # 1. Workflow failures alarm
-        assert 'resource "aws_cloudwatch_metric_alarm" "workflow_failures"' in cloudwatch_alarms_main_tf
-        
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "workflow_failures"'
+            in cloudwatch_alarms_main_tf
+        )
+
         # 2. LLM analyzer timeouts alarm
-        assert 'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_timeouts"' in cloudwatch_alarms_main_tf
-        
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "llm_analyzer_timeouts"'
+            in cloudwatch_alarms_main_tf
+        )
+
         # 3. Notification delivery failures alarm
-        assert 'resource "aws_cloudwatch_metric_alarm" "notification_delivery_failures"' in cloudwatch_alarms_main_tf
+        assert (
+            'resource "aws_cloudwatch_metric_alarm" "notification_delivery_failures"'
+            in cloudwatch_alarms_main_tf
+        )
 
 
 class TestSecurityConfiguration:

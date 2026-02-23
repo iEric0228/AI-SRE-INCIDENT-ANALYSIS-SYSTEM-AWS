@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 from hypothesis import settings, Verbosity
 
-
 # Hypothesis profiles for property-based testing
 settings.register_profile("dev", max_examples=20, verbosity=Verbosity.normal)
 settings.register_profile("ci", max_examples=100, verbosity=Verbosity.verbose)
@@ -201,9 +200,7 @@ def mock_boto3_client():
 def mock_cloudwatch_client(mock_boto3_client):
     """Mock CloudWatch client with common methods."""
     mock_boto3_client.get_metric_statistics.return_value = {
-        "Datapoints": [
-            {"Timestamp": datetime.utcnow(), "Average": 75.0, "Unit": "Percent"}
-        ]
+        "Datapoints": [{"Timestamp": datetime.utcnow(), "Average": 75.0, "Unit": "Percent"}]
     }
     return mock_boto3_client
 

@@ -62,10 +62,10 @@ graph TB
     BR[Amazon Bedrock] -.->|Claude Model| LLM
     
     style CW fill:#ff9999
-    style SF fill:#ffcc99
-    style LLM fill:#99ccff
-    style DB fill:#cc99ff
-    style Slack fill:#99ff99
+    style SF fill:#ffd700
+    style LLM fill:#87ceeb
+    style DB fill:#dda0dd
+    style Slack fill:#90ee90
 ```
 
 ### Architecture Patterns

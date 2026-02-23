@@ -152,15 +152,15 @@ output "slack_secret_arn" {
 output "system_alarm_arns" {
   description = "ARNs of CloudWatch alarms monitoring the incident analysis system"
   value = var.create_cloudwatch_alarms ? {
-    workflow_failures            = module.cloudwatch_alarms[0].workflow_failures_alarm_arn
-    workflow_timeouts            = module.cloudwatch_alarms[0].workflow_timeouts_alarm_arn
-    llm_analyzer_errors          = module.cloudwatch_alarms[0].llm_analyzer_errors_alarm_arn
-    llm_analyzer_timeouts        = module.cloudwatch_alarms[0].llm_analyzer_timeouts_alarm_arn
-    notification_errors          = module.cloudwatch_alarms[0].notification_errors_alarm_arn
+    workflow_failures              = module.cloudwatch_alarms[0].workflow_failures_alarm_arn
+    workflow_timeouts              = module.cloudwatch_alarms[0].workflow_timeouts_alarm_arn
+    llm_analyzer_errors            = module.cloudwatch_alarms[0].llm_analyzer_errors_alarm_arn
+    llm_analyzer_timeouts          = module.cloudwatch_alarms[0].llm_analyzer_timeouts_alarm_arn
+    notification_errors            = module.cloudwatch_alarms[0].notification_errors_alarm_arn
     notification_delivery_failures = module.cloudwatch_alarms[0].notification_delivery_failures_alarm_arn
-    collector_failures           = module.cloudwatch_alarms[0].collector_failures_alarm_arn
-    dynamodb_throttles           = module.cloudwatch_alarms[0].dynamodb_throttles_alarm_arn
-    correlation_engine_errors    = module.cloudwatch_alarms[0].correlation_engine_errors_alarm_arn
+    collector_failures             = module.cloudwatch_alarms[0].collector_failures_alarm_arn
+    dynamodb_throttles             = module.cloudwatch_alarms[0].dynamodb_throttles_alarm_arn
+    correlation_engine_errors      = module.cloudwatch_alarms[0].correlation_engine_errors_alarm_arn
   } : {}
 }
 
@@ -199,12 +199,12 @@ output "console_urls" {
 output "integration_config" {
   description = "Configuration values for external integrations"
   value = {
-    region                = var.aws_region
-    environment           = var.environment
-    orchestrator_arn      = module.step_functions.state_machine_arn
-    notification_topic    = module.eventbridge.sns_topic_arn
-    incident_table        = module.dynamodb.table_name
-    log_level             = var.lambda_log_level
+    region             = var.aws_region
+    environment        = var.environment
+    orchestrator_arn   = module.step_functions.state_machine_arn
+    notification_topic = module.eventbridge.sns_topic_arn
+    incident_table     = module.dynamodb.table_name
+    log_level          = var.lambda_log_level
   }
 }
 
@@ -215,13 +215,13 @@ output "integration_config" {
 output "deployment_info" {
   description = "Information about the deployed infrastructure"
   value = {
-    project_name          = var.project_name
-    environment           = var.environment
-    region                = var.aws_region
-    terraform_workspace   = terraform.workspace
-    lambda_architecture   = var.lambda_architecture
-    workflow_timeout      = var.workflow_timeout_seconds
-    incident_retention    = var.incident_retention_days
+    project_name        = var.project_name
+    environment         = var.environment
+    region              = var.aws_region
+    terraform_workspace = terraform.workspace
+    lambda_architecture = var.lambda_architecture
+    workflow_timeout    = var.workflow_timeout_seconds
+    incident_retention  = var.incident_retention_days
   }
 }
 
@@ -232,13 +232,13 @@ output "deployment_info" {
 output "test_configuration" {
   description = "Configuration values for testing the system"
   value = {
-    orchestrator_arn         = module.step_functions.state_machine_arn
-    test_alarm_topic         = module.eventbridge.sns_topic_arn
-    incident_table           = module.dynamodb.table_name
-    metrics_collector_name   = module.lambda.metrics_collector_name
-    logs_collector_name      = module.lambda.logs_collector_name
-    correlation_engine_name  = module.lambda.correlation_engine_name
-    llm_analyzer_name        = module.lambda.llm_analyzer_name
+    orchestrator_arn          = module.step_functions.state_machine_arn
+    test_alarm_topic          = module.eventbridge.sns_topic_arn
+    incident_table            = module.dynamodb.table_name
+    metrics_collector_name    = module.lambda.metrics_collector_name
+    logs_collector_name       = module.lambda.logs_collector_name
+    correlation_engine_name   = module.lambda.correlation_engine_name
+    llm_analyzer_name         = module.lambda.llm_analyzer_name
     notification_service_name = module.lambda.notification_service_name
   }
 }

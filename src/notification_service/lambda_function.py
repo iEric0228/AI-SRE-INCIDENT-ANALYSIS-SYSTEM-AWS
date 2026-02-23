@@ -18,14 +18,15 @@ from botocore.exceptions import ClientError
 
 # Add parent directory to path for shared modules
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from shared.models import (
     AnalysisReport,
     NotificationOutput,
     NotificationDeliveryStatus,
     Status,
-    DeliveryStatus
+    DeliveryStatus,
 )
 
 # Configure logging
@@ -33,83 +34,94 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
-secrets_manager = boto3.client('secretsmanager')
-sns_client = boto3.client('sns')
+secrets_manager = boto3.client("secretsmanager")
+sns_client = boto3.client("sns")
 
 # Import metrics utility
 from shared.metrics import put_notification_delivery_metric
 
 # Environment variables
-SLACK_SECRET_NAME = os.environ.get('SLACK_SECRET_NAME', 'incident-analysis/slack-webhook')
-SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
-INCIDENT_STORE_BASE_URL = os.environ.get('INCIDENT_STORE_BASE_URL', 'https://console.aws.amazon.com/dynamodb/incident')
+SLACK_SECRET_NAME = os.environ.get("SLACK_SECRET_NAME", "incident-analysis/slack-webhook")
+SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
+INCIDENT_STORE_BASE_URL = os.environ.get(
+    "INCIDENT_STORE_BASE_URL", "https://console.aws.amazon.com/dynamodb/incident"
+)
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler for notification service.
-    
+
     Args:
         event: Analysis report from LLM analyzer
         context: Lambda context
-        
+
     Returns:
         Notification output with delivery status
     """
     start_time = datetime.utcnow()
-    
+
     # Extract correlation ID
-    correlation_id = event.get('incidentId', 'unknown')
-    
+    correlation_id = event.get("incidentId", "unknown")
+
     try:
-        logger.info(json.dumps({
-            "message": "Notification service invoked",
-            "correlationId": correlation_id,
-            "timestamp": start_time.isoformat()
-        }))
-        
+        logger.info(
+            json.dumps(
+                {
+                    "message": "Notification service invoked",
+                    "correlationId": correlation_id,
+                    "timestamp": start_time.isoformat(),
+                }
+            )
+        )
+
         # Parse analysis report
         analysis_report = AnalysisReport.from_dict(event)
-        
+
         # Initialize delivery status
         delivery_status = NotificationDeliveryStatus(
             slack=DeliveryStatus.SKIPPED.value,
             email=DeliveryStatus.SKIPPED.value,
             slack_error=None,
-            email_error=None
+            email_error=None,
         )
-        
+
         # GRACEFUL DEGRADATION STRATEGY:
         # Attempt both notification channels independently
         # If Slack fails, still try email (Requirement 8.6)
         # Return partial success if at least one channel succeeds
-        
+
         # Attempt Slack notification
         slack_start = datetime.utcnow()
         try:
             send_slack_notification(analysis_report)
             slack_duration = (datetime.utcnow() - slack_start).total_seconds()
             delivery_status.slack = DeliveryStatus.DELIVERED.value
-            logger.info(json.dumps({
-                "message": "Slack notification delivered",
-                "correlationId": correlation_id
-            }))
+            logger.info(
+                json.dumps(
+                    {"message": "Slack notification delivered", "correlationId": correlation_id}
+                )
+            )
             # Emit success metric
-            put_notification_delivery_metric('slack', True, slack_duration)
+            put_notification_delivery_metric("slack", True, slack_duration)
         except Exception as e:
             # Slack failure - log error but continue to email
             slack_duration = (datetime.utcnow() - slack_start).total_seconds()
             delivery_status.slack = DeliveryStatus.FAILED.value
             delivery_status.slack_error = str(e)
-            logger.error(json.dumps({
-                "message": "Slack notification failed",
-                "correlationId": correlation_id,
-                "error": str(e),
-                "stackTrace": traceback.format_exc()
-            }))
+            logger.error(
+                json.dumps(
+                    {
+                        "message": "Slack notification failed",
+                        "correlationId": correlation_id,
+                        "error": str(e),
+                        "stackTrace": traceback.format_exc(),
+                    }
+                )
+            )
             # Emit failure metric
-            put_notification_delivery_metric('slack', False, slack_duration)
-        
+            put_notification_delivery_metric("slack", False, slack_duration)
+
         # Attempt email notification (independent of Slack result)
         # This ensures at least one notification channel is attempted
         email_start = datetime.utcnow()
@@ -117,89 +129,106 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             send_email_notification(analysis_report)
             email_duration = (datetime.utcnow() - email_start).total_seconds()
             delivery_status.email = DeliveryStatus.DELIVERED.value
-            logger.info(json.dumps({
-                "message": "Email notification delivered",
-                "correlationId": correlation_id
-            }))
+            logger.info(
+                json.dumps(
+                    {"message": "Email notification delivered", "correlationId": correlation_id}
+                )
+            )
             # Emit success metric
-            put_notification_delivery_metric('email', True, email_duration)
+            put_notification_delivery_metric("email", True, email_duration)
         except Exception as e:
             # Email failure - log error
             email_duration = (datetime.utcnow() - email_start).total_seconds()
             delivery_status.email = DeliveryStatus.FAILED.value
             delivery_status.email_error = str(e)
-            logger.error(json.dumps({
-                "message": "Email notification failed",
-                "correlationId": correlation_id,
-                "error": str(e),
-                "stackTrace": traceback.format_exc()
-            }))
+            logger.error(
+                json.dumps(
+                    {
+                        "message": "Email notification failed",
+                        "correlationId": correlation_id,
+                        "error": str(e),
+                        "stackTrace": traceback.format_exc(),
+                    }
+                )
+            )
             # Emit failure metric
-            put_notification_delivery_metric('email', False, email_duration)
-        
+            put_notification_delivery_metric("email", False, email_duration)
+
         # Calculate duration
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds()
-        
+
         # Determine overall status
-        if delivery_status.slack == DeliveryStatus.DELIVERED.value or delivery_status.email == DeliveryStatus.DELIVERED.value:
-            if delivery_status.slack == DeliveryStatus.DELIVERED.value and delivery_status.email == DeliveryStatus.DELIVERED.value:
+        if (
+            delivery_status.slack == DeliveryStatus.DELIVERED.value
+            or delivery_status.email == DeliveryStatus.DELIVERED.value
+        ):
+            if (
+                delivery_status.slack == DeliveryStatus.DELIVERED.value
+                and delivery_status.email == DeliveryStatus.DELIVERED.value
+            ):
                 status = Status.SUCCESS.value
             else:
                 status = Status.PARTIAL.value
         else:
             status = Status.FAILED.value
-        
+
         # Create output
         output = NotificationOutput(
-            status=status,
-            delivery_status=delivery_status,
-            notification_duration=duration
+            status=status, delivery_status=delivery_status, notification_duration=duration
         )
-        
-        logger.info(json.dumps({
-            "message": "Notification service completed",
-            "correlationId": correlation_id,
-            "status": status,
-            "duration": duration,
-            "slackStatus": delivery_status.slack,
-            "emailStatus": delivery_status.email
-        }))
-        
+
+        logger.info(
+            json.dumps(
+                {
+                    "message": "Notification service completed",
+                    "correlationId": correlation_id,
+                    "status": status,
+                    "duration": duration,
+                    "slackStatus": delivery_status.slack,
+                    "emailStatus": delivery_status.email,
+                }
+            )
+        )
+
         return output.to_dict()
-        
+
     except Exception as e:
-        logger.error(json.dumps({
-            "message": "Notification service failed",
-            "correlationId": correlation_id,
-            "error": str(e),
-            "errorType": type(e).__name__,
-            "stackTrace": traceback.format_exc()
-        }))
-        
+        logger.error(
+            json.dumps(
+                {
+                    "message": "Notification service failed",
+                    "correlationId": correlation_id,
+                    "error": str(e),
+                    "errorType": type(e).__name__,
+                    "stackTrace": traceback.format_exc(),
+                }
+            )
+        )
+
         # Return failure response
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds()
-        
+
         return {
             "status": Status.FAILED.value,
             "deliveryStatus": {
                 "slack": DeliveryStatus.FAILED.value,
                 "email": DeliveryStatus.FAILED.value,
                 "slackError": str(e),
-                "emailError": str(e)
+                "emailError": str(e),
             },
-            "notificationDuration": duration
+            "notificationDuration": duration,
         }
 
 
 def send_slack_notification(analysis_report: AnalysisReport) -> None:
     """
     Send notification to Slack via webhook.
-    
+
     Args:
         analysis_report: Analysis report to send
-        
+
     Raises:
         Exception: If Slack delivery fails after retries
     """
@@ -208,23 +237,21 @@ def send_slack_notification(analysis_report: AnalysisReport) -> None:
     # Retry delay: 1 second (simple fixed delay, not exponential)
     # Reason: Slack webhooks may fail due to transient network issues
     # Timeout: 5 seconds per request to prevent hanging
-    
+
     # Retrieve webhook URL from Secrets Manager (runtime retrieval for security)
     webhook_url = get_slack_webhook_url()
-    
+
     # Format message
     message = format_slack_message(analysis_report)
-    
+
     # Send with retry logic
     max_retries = 2
     retry_delay = 1  # seconds
-    
+
     for attempt in range(max_retries + 1):
         try:
             response = requests.post(
-                webhook_url,
-                json=message,
-                timeout=5  # Prevent hanging on slow connections
+                webhook_url, json=message, timeout=5  # Prevent hanging on slow connections
             )
             response.raise_for_status()  # Raise exception for 4xx/5xx status codes
             return  # Success - exit function
@@ -241,21 +268,21 @@ def send_slack_notification(analysis_report: AnalysisReport) -> None:
 def send_email_notification(analysis_report: AnalysisReport) -> None:
     """
     Send notification via SNS email.
-    
+
     Args:
         analysis_report: Analysis report to send
-        
+
     Raises:
         Exception: If email delivery fails
     """
     if not SNS_TOPIC_ARN:
         raise Exception("SNS_TOPIC_ARN environment variable not set")
-    
+
     # Format message
     subject = format_email_subject(analysis_report)
     plain_text = format_email_plain_text(analysis_report)
     html_text = format_email_html(analysis_report)
-    
+
     # Publish to SNS
     try:
         sns_client.publish(
@@ -263,15 +290,14 @@ def send_email_notification(analysis_report: AnalysisReport) -> None:
             Subject=subject,
             Message=plain_text,
             MessageAttributes={
-                'incidentId': {
-                    'DataType': 'String',
-                    'StringValue': analysis_report.incident_id
+                "incidentId": {"DataType": "String", "StringValue": analysis_report.incident_id},
+                "severity": {
+                    "DataType": "String",
+                    "StringValue": get_severity_from_confidence(
+                        analysis_report.analysis.confidence
+                    ),
                 },
-                'severity': {
-                    'DataType': 'String',
-                    'StringValue': get_severity_from_confidence(analysis_report.analysis.confidence)
-                }
-            }
+            },
         )
     except ClientError as e:
         raise Exception(f"SNS publish failed: {e}")
@@ -280,17 +306,17 @@ def send_email_notification(analysis_report: AnalysisReport) -> None:
 def get_slack_webhook_url() -> str:
     """
     Retrieve Slack webhook URL from Secrets Manager.
-    
+
     Returns:
         Webhook URL
-        
+
     Raises:
         Exception: If secret retrieval fails
     """
     try:
         response = secrets_manager.get_secret_value(SecretId=SLACK_SECRET_NAME)
-        secret = json.loads(response['SecretString'])
-        return secret['webhook_url']
+        secret = json.loads(response["SecretString"])
+        return secret["webhook_url"]
     except ClientError as e:
         raise Exception(f"Failed to retrieve Slack webhook URL: {e}")
     except (KeyError, json.JSONDecodeError) as e:
@@ -300,18 +326,18 @@ def get_slack_webhook_url() -> str:
 def format_slack_message(analysis_report: AnalysisReport) -> Dict[str, Any]:
     """
     Format analysis report as Slack message with blocks.
-    
+
     Args:
         analysis_report: Analysis report
-        
+
     Returns:
         Slack message payload
     """
     analysis = analysis_report.analysis
-    
+
     # Determine severity emoji
     confidence = analysis.confidence
-    confidence_value = confidence.value if hasattr(confidence, 'value') else str(confidence)
+    confidence_value = confidence.value if hasattr(confidence, "value") else str(confidence)
     if confidence_value == "high":
         emoji = "🔴"
         severity = "High"
@@ -324,110 +350,85 @@ def format_slack_message(analysis_report: AnalysisReport) -> Dict[str, Any]:
     else:
         emoji = "⚪"
         severity = "Unknown"
-    
+
     # Generate incident store link
     incident_link = f"{INCIDENT_STORE_BASE_URL}/{analysis_report.incident_id}"
-    
+
     # Build Slack blocks
     blocks = [
         {
             "type": "header",
-            "text": {
-                "type": "plain_text",
-                "text": f"{emoji} Incident Alert",
-                "emoji": True
-            }
+            "text": {"type": "plain_text", "text": f"{emoji} Incident Alert", "emoji": True},
         },
         {
             "type": "section",
             "fields": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"*Incident ID:*\n{analysis_report.incident_id}"
-                },
-                {
-                    "type": "mrkdwn",
-                    "text": f"*Severity:*\n{severity}"
-                },
-                {
-                    "type": "mrkdwn",
-                    "text": f"*Time:*\n{analysis_report.timestamp}"
-                },
-                {
-                    "type": "mrkdwn",
-                    "text": f"*Confidence:*\n{confidence_value.capitalize()}"
-                }
-            ]
+                {"type": "mrkdwn", "text": f"*Incident ID:*\n{analysis_report.incident_id}"},
+                {"type": "mrkdwn", "text": f"*Severity:*\n{severity}"},
+                {"type": "mrkdwn", "text": f"*Time:*\n{analysis_report.timestamp}"},
+                {"type": "mrkdwn", "text": f"*Confidence:*\n{confidence_value.capitalize()}"},
+            ],
         },
-        {
-            "type": "divider"
-        },
+        {"type": "divider"},
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*Root Cause Hypothesis:*\n{analysis.root_cause_hypothesis}"
-            }
-        }
+                "text": f"*Root Cause Hypothesis:*\n{analysis.root_cause_hypothesis}",
+            },
+        },
     ]
-    
+
     # Add evidence section if available
     if analysis.evidence:
         evidence_text = "\n".join([f"• {e}" for e in analysis.evidence])
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*Evidence:*\n{evidence_text}"
-            }
-        })
-    
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Evidence:*\n{evidence_text}"}}
+        )
+
     # Add contributing factors if available
     if analysis.contributing_factors:
         factors_text = "\n".join([f"• {f}" for f in analysis.contributing_factors])
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*Contributing Factors:*\n{factors_text}"
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Contributing Factors:*\n{factors_text}"},
             }
-        })
-    
+        )
+
     # Add recommended actions
     if analysis.recommended_actions:
-        actions_text = "\n".join([f"{i+1}. {a}" for i, a in enumerate(analysis.recommended_actions)])
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*Recommended Actions:*\n{actions_text}"
+        actions_text = "\n".join(
+            [f"{i+1}. {a}" for i, a in enumerate(analysis.recommended_actions)]
+        )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Recommended Actions:*\n{actions_text}"},
             }
-        })
-    
+        )
+
     # Add link to full details
-    blocks.extend([
-        {
-            "type": "divider"
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"<{incident_link}|View Full Incident Details>"
-            }
-        }
-    ])
-    
+    blocks.extend(
+        [
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"<{incident_link}|View Full Incident Details>"},
+            },
+        ]
+    )
+
     return {"blocks": blocks}
 
 
 def format_email_subject(analysis_report: AnalysisReport) -> str:
     """
     Format email subject line.
-    
+
     Args:
         analysis_report: Analysis report
-        
+
     Returns:
         Email subject
     """
@@ -439,19 +440,19 @@ def format_email_subject(analysis_report: AnalysisReport) -> str:
 def format_email_plain_text(analysis_report: AnalysisReport) -> str:
     """
     Format analysis report as plain text email.
-    
+
     Args:
         analysis_report: Analysis report
-        
+
     Returns:
         Plain text email body
     """
     analysis = analysis_report.analysis
     confidence = analysis.confidence
-    confidence_value = confidence.value if hasattr(confidence, 'value') else str(confidence)
+    confidence_value = confidence.value if hasattr(confidence, "value") else str(confidence)
     severity = get_severity_from_confidence(confidence)
     incident_link = f"{INCIDENT_STORE_BASE_URL}/{analysis_report.incident_id}"
-    
+
     lines = [
         "INCIDENT ALERT",
         "=" * 60,
@@ -464,55 +465,51 @@ def format_email_plain_text(analysis_report: AnalysisReport) -> str:
         "ROOT CAUSE HYPOTHESIS:",
         "-" * 60,
         analysis.root_cause_hypothesis,
-        ""
+        "",
     ]
-    
+
     if analysis.evidence:
         lines.append("EVIDENCE:")
         lines.append("-" * 60)
         for evidence in analysis.evidence:
             lines.append(f"• {evidence}")
         lines.append("")
-    
+
     if analysis.contributing_factors:
         lines.append("CONTRIBUTING FACTORS:")
         lines.append("-" * 60)
         for factor in analysis.contributing_factors:
             lines.append(f"• {factor}")
         lines.append("")
-    
+
     if analysis.recommended_actions:
         lines.append("RECOMMENDED ACTIONS:")
         lines.append("-" * 60)
         for i, action in enumerate(analysis.recommended_actions, 1):
             lines.append(f"{i}. {action}")
         lines.append("")
-    
-    lines.extend([
-        "=" * 60,
-        f"View Full Incident Details: {incident_link}",
-        ""
-    ])
-    
+
+    lines.extend(["=" * 60, f"View Full Incident Details: {incident_link}", ""])
+
     return "\n".join(lines)
 
 
 def format_email_html(analysis_report: AnalysisReport) -> str:
     """
     Format analysis report as HTML email.
-    
+
     Args:
         analysis_report: Analysis report
-        
+
     Returns:
         HTML email body
     """
     analysis = analysis_report.analysis
     confidence = analysis.confidence
-    confidence_value = confidence.value if hasattr(confidence, 'value') else str(confidence)
+    confidence_value = confidence.value if hasattr(confidence, "value") else str(confidence)
     severity = get_severity_from_confidence(confidence)
     incident_link = f"{INCIDENT_STORE_BASE_URL}/{analysis_report.incident_id}"
-    
+
     # Determine color based on severity
     if severity == "High":
         color = "#dc3545"
@@ -520,7 +517,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
         color = "#ffc107"
     else:
         color = "#28a745"
-    
+
     html = f"""
     <html>
     <head>
@@ -569,7 +566,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 <p>{analysis.root_cause_hypothesis}</p>
             </div>
     """
-    
+
     if analysis.evidence:
         html += """
             <div class="section">
@@ -582,7 +579,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 </ul>
             </div>
         """
-    
+
     if analysis.contributing_factors:
         html += """
             <div class="section">
@@ -595,7 +592,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 </ul>
             </div>
         """
-    
+
     if analysis.recommended_actions:
         html += """
             <div class="section">
@@ -608,7 +605,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 </ol>
             </div>
         """
-    
+
     html += f"""
             <a href="{incident_link}" class="button">View Full Incident Details</a>
             
@@ -619,25 +616,20 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
     </body>
     </html>
     """
-    
+
     return html
 
 
 def get_severity_from_confidence(confidence) -> str:
     """
     Map confidence level to severity.
-    
+
     Args:
         confidence: Confidence level (high, medium, low, none) - can be enum or string
-        
+
     Returns:
         Severity level (High, Medium, Low)
     """
-    confidence_value = confidence.value if hasattr(confidence, 'value') else str(confidence)
-    mapping = {
-        "high": "High",
-        "medium": "Medium",
-        "low": "Low",
-        "none": "Low"
-    }
+    confidence_value = confidence.value if hasattr(confidence, "value") else str(confidence)
+    mapping = {"high": "High", "medium": "Medium", "low": "Low", "none": "Low"}
     return mapping.get(confidence_value.lower(), "Low")

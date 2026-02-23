@@ -16,15 +16,15 @@ exclude =
     *.egg-info
 
 # Error codes to ignore
-ignore = 
-    E203,  # Whitespace before ':' (conflicts with black)
-    E501,  # Line too long (handled by black)
-    W503,  # Line break before binary operator (conflicts with black)
+ignore =
+    E203,
+    E501,
+    W503
 
 # Complexity
 max-complexity = 10
 
 # Per-file ignores
 per-file-ignores =
-    __init__.py:F401  # Unused imports in __init__.py are okay
-    tests/*:F401,F811  # Allow unused imports and redefinitions in tests
+    __init__.py:F401
+    tests/*:F401,F811
