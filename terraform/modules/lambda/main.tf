@@ -16,7 +16,6 @@ resource "aws_lambda_function" "metrics_collector" {
 
   environment {
     variables = {
-      AWS_REGION         = var.aws_region
       DYNAMODB_TABLE     = var.dynamodb_table_name
       LOG_LEVEL          = var.log_level
       INCIDENT_TOPIC_ARN = var.sns_topic_arn
@@ -49,7 +48,6 @@ resource "aws_lambda_function" "logs_collector" {
 
   environment {
     variables = {
-      AWS_REGION         = var.aws_region
       DYNAMODB_TABLE     = var.dynamodb_table_name
       LOG_LEVEL          = var.log_level
       INCIDENT_TOPIC_ARN = var.sns_topic_arn
@@ -82,7 +80,6 @@ resource "aws_lambda_function" "deploy_context_collector" {
 
   environment {
     variables = {
-      AWS_REGION         = var.aws_region
       DYNAMODB_TABLE     = var.dynamodb_table_name
       LOG_LEVEL          = var.log_level
       INCIDENT_TOPIC_ARN = var.sns_topic_arn
@@ -115,7 +112,6 @@ resource "aws_lambda_function" "correlation_engine" {
 
   environment {
     variables = {
-      AWS_REGION         = var.aws_region
       DYNAMODB_TABLE     = var.dynamodb_table_name
       LOG_LEVEL          = var.log_level
       MAX_CONTEXT_SIZE   = "51200" # 50KB in bytes
@@ -149,7 +145,6 @@ resource "aws_lambda_function" "llm_analyzer" {
 
   environment {
     variables = {
-      AWS_REGION            = var.aws_region
       DYNAMODB_TABLE        = var.dynamodb_table_name
       LOG_LEVEL             = var.log_level
       BEDROCK_MODEL_ID      = "anthropic.claude-v2"
@@ -184,7 +179,6 @@ resource "aws_lambda_function" "notification_service" {
 
   environment {
     variables = {
-      AWS_REGION         = var.aws_region
       DYNAMODB_TABLE     = var.dynamodb_table_name
       LOG_LEVEL          = var.log_level
       SLACK_SECRET_NAME  = "${var.project_name}/slack-webhook"

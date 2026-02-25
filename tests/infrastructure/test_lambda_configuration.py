@@ -214,7 +214,10 @@ class TestLambdaEnvironmentVariables:
     """Test Lambda functions have required environment variables."""
 
     def test_all_functions_have_common_environment_variables(self):
-        """All functions should have AWS_REGION, DYNAMODB_TABLE, LOG_LEVEL."""
+        """All functions should have DYNAMODB_TABLE, LOG_LEVEL.
+
+        Note: AWS_REGION is a reserved Lambda env var set automatically by AWS.
+        """
         module_path = get_terraform_lambda_module_path()
         main_tf = (module_path / "main.tf").read_text()
 
@@ -223,7 +226,6 @@ class TestLambdaEnvironmentVariables:
         assert env_block_count == 6, f"Expected 6 environment blocks, found {env_block_count}"
 
         # Common variables should appear in all functions
-        assert main_tf.count("AWS_REGION") >= 6
         assert main_tf.count("DYNAMODB_TABLE") >= 6
         assert main_tf.count("LOG_LEVEL") >= 6
 
