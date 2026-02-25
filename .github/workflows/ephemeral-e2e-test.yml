@@ -61,35 +61,55 @@ jobs:
       # ================================================================
       - name: Package Lambda Functions
         run: |
-          chmod +x scripts/package-lambdas.sh
-          bash scripts/package-lambdas.sh
-
-      - name: Verify Lambda Packages
-        run: |
-          echo "Verifying Lambda deployment packages..."
-          ALL_OK=true
+          echo "=== Packaging Lambda functions ==="
           for func in metrics_collector logs_collector deploy_context_collector \
                       correlation_engine llm_analyzer notification_service; do
-            ZIP_PATH="src/${func}/deployment.zip"
-            if [ ! -f "$ZIP_PATH" ]; then
-              echo "FAIL: Missing ${ZIP_PATH}"
-              echo "  Contents of src/${func}/:"
-              ls -la "src/${func}/" 2>/dev/null || echo "  Directory not found!"
-              ALL_OK=false
+            echo ""
+            echo "--- ${func} ---"
+            FUNC_DIR="src/${func}"
+            BUILD_DIR="${FUNC_DIR}/build"
+
+            rm -rf "${BUILD_DIR}" "${FUNC_DIR}/deployment.zip"
+            mkdir -p "${BUILD_DIR}"
+
+            # Copy function code and shared modules
+            cp "${FUNC_DIR}/lambda_function.py" "${BUILD_DIR}/"
+            cp -r src/shared "${BUILD_DIR}/shared"
+
+            # Install requests for notification_service only
+            if [ "${func}" = "notification_service" ]; then
+              echo "  Installing requests..."
+              pip install requests -t "${BUILD_DIR}" --quiet
+            fi
+
+            # Clean up bytecode
+            find "${BUILD_DIR}" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+            find "${BUILD_DIR}" -name "*.pyc" -delete 2>/dev/null || true
+            find "${BUILD_DIR}" -name "*.dist-info" -type d -exec rm -rf {} + 2>/dev/null || true
+
+            # Create zip
+            (cd "${BUILD_DIR}" && zip -r9q "../deployment.zip" .)
+            rm -rf "${BUILD_DIR}"
+
+            # Verify
+            if [ -f "${FUNC_DIR}/deployment.zip" ]; then
+              SIZE=$(du -h "${FUNC_DIR}/deployment.zip" | cut -f1)
+              echo "  OK: deployment.zip (${SIZE})"
             else
-              SIZE=$(du -h "$ZIP_PATH" | cut -f1)
-              FILES=$(zipinfo -1 "$ZIP_PATH" 2>/dev/null | wc -l | tr -d ' ')
-              echo "OK: ${ZIP_PATH} (${SIZE}, ${FILES} files)"
-              echo "  Contains: $(zipinfo -1 "$ZIP_PATH" 2>/dev/null | head -5 | tr '\n' ', ')"
+              echo "  ERROR: Failed to create deployment.zip!"
+              exit 1
             fi
           done
-          if [ "$ALL_OK" = false ]; then
-            echo ""
-            echo "ERROR: Some Lambda packages are missing!"
-            exit 1
-          fi
           echo ""
-          echo "All Lambda packages verified successfully."
+          echo "=== All Lambda packages created ==="
+
+      - name: Verify Lambda Packages Exist
+        run: |
+          echo "Final verification of all deployment packages:"
+          for func in metrics_collector logs_collector deploy_context_collector \
+                      correlation_engine llm_analyzer notification_service; do
+            ls -lh "src/${func}/deployment.zip"
+          done
 
       # ================================================================
       # DEPLOY EPHEMERAL INFRASTRUCTURE
