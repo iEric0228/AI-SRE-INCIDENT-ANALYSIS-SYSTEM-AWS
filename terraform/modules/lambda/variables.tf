@@ -20,6 +20,7 @@ variable "iam_role_arns" {
     correlation_engine       = string
     llm_analyzer             = string
     notification_service     = string
+    event_transformer        = string
   })
 }
 
@@ -32,6 +33,7 @@ variable "lambda_packages" {
     correlation_engine       = string
     llm_analyzer             = string
     notification_service     = string
+    event_transformer        = string
   })
 }
 
@@ -43,6 +45,17 @@ variable "dynamodb_table_name" {
 variable "sns_topic_arn" {
   description = "ARN of the SNS topic for incident notifications"
   type        = string
+}
+
+variable "state_machine_arn" {
+  description = "ARN of the Step Functions state machine for the event transformer to start"
+  type        = string
+}
+
+variable "lambda_concurrency_limit" {
+  description = "Maximum concurrent executions per Lambda function (prevents runaway costs)"
+  type        = number
+  default     = 10
 }
 
 variable "log_level" {

@@ -238,19 +238,19 @@ resource "aws_sfn_state_machine" "incident_orchestrator" {
                   TableName = var.dynamodb_table_name
                   Item = {
                     incidentId = {
-                      "S.$" = "$.incident.incidentId"
+                      "S.$" = "$.incidentId"
                     }
                     timestamp = {
-                      "S.$" = "$.incident.timestamp"
+                      "S.$" = "$.timestamp"
                     }
                     resourceArn = {
-                      "S.$" = "$.incident.resourceArn"
+                      "S.$" = "$.resourceArn"
                     }
                     resourceType = {
-                      "S.$" = "$.structuredContext.resource.type"
+                      "S.$" = "$.structuredContext.structuredContext.resource.type"
                     }
                     alarmName = {
-                      "S.$" = "$.incident.alarmName"
+                      "S.$" = "$.alarmName"
                     }
                     severity = {
                       S = "high"
@@ -261,11 +261,11 @@ resource "aws_sfn_state_machine" "incident_orchestrator" {
                     analysisReport = {
                       "S.$" = "States.JsonToString($.analysisReport)"
                     }
-                    notificationStatus = {
-                      "S.$" = "States.JsonToString($.notificationResults[0])"
+                    status = {
+                      S = "analyzed"
                     }
                     ttl = {
-                      "N.$" = "States.Format('{}', $.incident.ttl)"
+                      "N.$" = "States.Format('{}', $.ttl)"
                     }
                   }
                 }

@@ -13,6 +13,7 @@ import logging
 import os
 import sys
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,6 +30,72 @@ cloudwatch = boto3.client("cloudwatch")
 # Import metrics utility
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 from metrics import put_collector_success_metric  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# SSM-backed time-window configuration (module-level cache for warm reuse).
+# Parameters are read once on cold start. Defaults apply when SSM is
+# unavailable or the parameters have not been created yet.
+# ---------------------------------------------------------------------------
+_DEFAULT_LOOKBACK_MINUTES: int = 60
+_DEFAULT_LOOKAHEAD_MINUTES: int = 5
+
+_SSM_PARAM_LOOKBACK = os.environ.get(
+    "METRICS_LOOKBACK_PARAM", "/incident-analysis/metrics-lookback-minutes"
+)
+_SSM_PARAM_LOOKAHEAD = os.environ.get(
+    "METRICS_LOOKAHEAD_PARAM", "/incident-analysis/metrics-lookahead-minutes"
+)
+
+
+def _load_time_window_from_ssm() -> Tuple[int, int]:
+    """
+    Load metric time-window parameters from SSM Parameter Store.
+
+    Returns:
+        Tuple of (lookback_minutes, lookahead_minutes).
+        Falls back to module defaults when parameters are absent or SSM
+        is unreachable, so a cold start never fails due to missing params.
+    """
+    ssm = boto3.client("ssm")
+    lookback = _DEFAULT_LOOKBACK_MINUTES
+    lookahead = _DEFAULT_LOOKAHEAD_MINUTES
+
+    try:
+        response = ssm.get_parameters(
+            Names=[_SSM_PARAM_LOOKBACK, _SSM_PARAM_LOOKAHEAD],
+            WithDecryption=False,
+        )
+        params = {p["Name"]: p["Value"] for p in response.get("Parameters", [])}
+
+        lookback = int(params.get(_SSM_PARAM_LOOKBACK, _DEFAULT_LOOKBACK_MINUTES))
+        lookahead = int(params.get(_SSM_PARAM_LOOKAHEAD, _DEFAULT_LOOKAHEAD_MINUTES))
+
+        logger.info(
+            json.dumps(
+                {
+                    "message": "Loaded time window from SSM",
+                    "lookbackMinutes": lookback,
+                    "lookaheadMinutes": lookahead,
+                }
+            )
+        )
+    except Exception as exc:
+        logger.warning(
+            json.dumps(
+                {
+                    "message": "Failed to load time window from SSM; using defaults",
+                    "lookbackMinutes": lookback,
+                    "lookaheadMinutes": lookahead,
+                    "error": str(exc),
+                }
+            )
+        )
+
+    return lookback, lookahead
+
+
+# Populated at cold-start; reused across warm invocations.
+_LOOKBACK_MINUTES, _LOOKAHEAD_MINUTES = _load_time_window_from_ssm()
 
 
 def _log(level: str, message: str, correlation_id: str, context: Any = None, **kwargs) -> None:
@@ -123,28 +190,41 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
         # Determine which metrics to collect based on namespace
         metric_names = event.get("metricNames") or get_default_metrics_for_namespace(namespace)
 
-        # Collect metrics
+        # Collect metrics in parallel using ThreadPoolExecutor.
+        # Max workers capped at 10 to avoid CloudWatch API throttling.
+        # Each GetMetricStatistics call is independent, so parallelism is safe.
         metrics_data = []
-        for metric_name in metric_names:
-            try:
-                metric_data = collect_metric(
-                    namespace=namespace,
-                    metric_name=metric_name,
-                    dimensions=dimensions,
-                    start_time=start_time_range,
-                    end_time=end_time_range,
-                )
-                if metric_data:
-                    metrics_data.append(metric_data)
-            except Exception as e:
-                _log(
-                    "warning",
-                    f"Failed to collect metric {metric_name}",
-                    correlation_id,
-                    context,
-                    metricName=metric_name,
-                    error=str(e),
-                )
+        # Keep max_workers <= 10 to avoid CloudWatch throttling.
+        max_workers = min(10, len(metric_names)) if metric_names else 1
+
+        def _collect_single(metric_name: str) -> Optional[Dict[str, Any]]:
+            return collect_metric(
+                namespace=namespace,
+                metric_name=metric_name,
+                dimensions=dimensions,
+                start_time=start_time_range,
+                end_time=end_time_range,
+            )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_metric = {
+                executor.submit(_collect_single, mn): mn for mn in metric_names
+            }
+            for future in as_completed(future_to_metric):
+                metric_name = future_to_metric[future]
+                try:
+                    metric_data = future.result()
+                    if metric_data:
+                        metrics_data.append(metric_data)
+                except Exception as e:
+                    _log(
+                        "warning",
+                        f"Failed to collect metric {metric_name}",
+                        correlation_id,
+                        context,
+                        metricName=metric_name,
+                        error=str(e),
+                    )
 
         # Calculate collection duration
         collection_duration = (datetime.utcnow() - start_time).total_seconds()
@@ -278,20 +358,31 @@ def parse_timestamp(timestamp_str: str) -> datetime:
     return datetime.fromisoformat(timestamp_str)
 
 
-def calculate_time_range(incident_timestamp: datetime) -> Tuple[datetime, datetime]:
+def calculate_time_range(
+    incident_timestamp: datetime,
+    lookback_minutes: int = _LOOKBACK_MINUTES,
+    lookahead_minutes: int = _LOOKAHEAD_MINUTES,
+) -> Tuple[datetime, datetime]:
     """
     Calculate time range for metrics query.
 
+    The window defaults are sourced from SSM Parameter Store at cold-start
+    (see _load_time_window_from_ssm). Callers can override the window by
+    supplying explicit values, which is useful for testing.
+
     Args:
         incident_timestamp: Time of the incident
+        lookback_minutes: Minutes before incident to include (default from SSM or 60)
+        lookahead_minutes: Minutes after incident to include (default from SSM or 5)
 
     Returns:
         Tuple of (start_time, end_time) for metrics query
 
-    Requirements: 3.1 - Query metrics from 60 minutes before to 5 minutes after
+    Requirements: 3.1 - Query metrics from lookback_minutes before to
+                         lookahead_minutes after the incident timestamp
     """
-    start_time = incident_timestamp - timedelta(minutes=60)
-    end_time = incident_timestamp + timedelta(minutes=5)
+    start_time = incident_timestamp - timedelta(minutes=lookback_minutes)
+    end_time = incident_timestamp + timedelta(minutes=lookahead_minutes)
 
     return start_time, end_time
 

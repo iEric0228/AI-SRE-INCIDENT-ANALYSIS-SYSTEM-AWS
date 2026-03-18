@@ -9,8 +9,6 @@ import json
 import logging
 import os
 
-# Add parent directory to path for shared modules
-import sys
 import time
 import traceback
 from datetime import datetime
@@ -20,15 +18,14 @@ import boto3
 import requests
 from botocore.exceptions import ClientError
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
-from shared.models import (  # noqa: E402
+from models import (
     AnalysisReport,
     DeliveryStatus,
     NotificationDeliveryStatus,
     NotificationOutput,
     Status,
 )
+from metrics import put_notification_delivery_metric
 
 # Configure logging
 logger = logging.getLogger()
@@ -37,9 +34,6 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 secrets_manager = boto3.client("secretsmanager")
 sns_client = boto3.client("sns")
-
-# Import metrics utility
-from shared.metrics import put_notification_delivery_metric  # noqa: E402
 
 # Environment variables
 SLACK_SECRET_NAME = os.environ.get("SLACK_SECRET_NAME", "incident-analysis/slack-webhook")
@@ -76,8 +70,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
         )
 
-        # Parse analysis report
-        analysis_report = AnalysisReport.from_dict(event)
+        # Parse analysis report from Step Functions state
+        # The analysis report is nested under 'analysisReport' key in the full state
+        report_data = event.get("analysisReport", event)
+        analysis_report = AnalysisReport.from_dict(report_data)
 
         # Initialize delivery status
         delivery_status = NotificationDeliveryStatus(

@@ -27,7 +27,7 @@ from typing import Any, Dict
 sys.path.insert(0, "/opt/python")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 
-from metrics import put_workflow_duration_metric  # noqa: E402
+from metrics import put_metric, put_workflow_duration_metric  # noqa: E402
 from models import (  # noqa: E402
     AlarmInfo,
     CompletenessInfo,
@@ -554,15 +554,40 @@ def enforce_size_constraint(  # noqa: C901
     if current_size <= max_size_bytes:
         return context
 
+    # Record the original counts so we can report exactly what was dropped.
+    original_metrics_ts_count = len(context.metrics.get("timeSeries", []))
+    original_logs_count = len(context.logs.get("entries", []))
+    original_changes_count = len(context.changes.get("entries", []))
+
+    # Emit a structured WARNING before any data is discarded so ops teams can
+    # observe truncation events without having to infer them from size deltas.
     logger.warning(
         json.dumps(
             {
                 "message": "Context exceeds size limit, truncating",
                 "correlationId": context.incident_id,
-                "currentSize": current_size,
-                "maxSize": max_size_bytes,
+                "originalSizeBytes": current_size,
+                "maxSizeBytes": max_size_bytes,
+                "originalMetricsTimeSeriesCount": original_metrics_ts_count,
+                "originalLogsCount": original_logs_count,
+                "originalChangesCount": original_changes_count,
             }
         )
+    )
+
+    # Emit a custom CloudWatch metric so this event is visible in dashboards and
+    # alarms without requiring log-metric filters.
+    put_metric(
+        metric_name="ContextTruncated",
+        value=1.0,
+        unit="Count",
+        dimensions=[{"Name": "IncidentId", "Value": context.incident_id}],
+    )
+    # Also record the original payload size for trend analysis.
+    put_metric(
+        metric_name="ContextTruncatedOriginalSizeBytes",
+        value=float(current_size),
+        unit="Bytes",
     )
 
     # TRUNCATION ALGORITHM:
@@ -575,36 +600,81 @@ def enforce_size_constraint(  # noqa: C901
     # Metrics are least critical since summary statistics are preserved
     if "timeSeries" in context.metrics and len(context.metrics["timeSeries"]) > 10:
         half_point = len(context.metrics["timeSeries"]) // 2
+        dropped = len(context.metrics["timeSeries"]) - (len(context.metrics["timeSeries"]) - half_point)
+        logger.warning(
+            json.dumps(
+                {
+                    "message": "Truncating metrics timeSeries",
+                    "correlationId": context.incident_id,
+                    "droppedCount": dropped,
+                    "retainedCount": len(context.metrics["timeSeries"]) - half_point,
+                }
+            )
+        )
         # Keep second half (most recent data) since list is chronologically sorted
         context.metrics["timeSeries"] = context.metrics["timeSeries"][half_point:]
 
         # Check if truncation was sufficient
         if context.size_bytes() <= max_size_bytes:
+            _log_truncation_complete(context, max_size_bytes)
             return context
 
     # Phase 2: Truncate log entries (keep last 50%)
     # Logs are moderately critical - recent errors most relevant
     if "entries" in context.logs and len(context.logs["entries"]) > 10:
         half_point = len(context.logs["entries"]) // 2
+        dropped = half_point
+        logger.warning(
+            json.dumps(
+                {
+                    "message": "Truncating log entries",
+                    "correlationId": context.incident_id,
+                    "droppedCount": dropped,
+                    "retainedCount": len(context.logs["entries"]) - half_point,
+                }
+            )
+        )
         # Keep second half (most recent logs)
         context.logs["entries"] = context.logs["entries"][half_point:]
 
         if context.size_bytes() <= max_size_bytes:
+            _log_truncation_complete(context, max_size_bytes)
             return context
 
     # Phase 3: Truncate change entries (keep last 50%)
     # Changes are most critical - recent deployments often cause incidents
     if "entries" in context.changes and len(context.changes["entries"]) > 5:
         half_point = len(context.changes["entries"]) // 2
+        dropped = half_point
+        logger.warning(
+            json.dumps(
+                {
+                    "message": "Truncating change entries",
+                    "correlationId": context.incident_id,
+                    "droppedCount": dropped,
+                    "retainedCount": len(context.changes["entries"]) - half_point,
+                }
+            )
+        )
         # Keep second half (most recent changes)
         context.changes["entries"] = context.changes["entries"][half_point:]
 
         if context.size_bytes() <= max_size_bytes:
+            _log_truncation_complete(context, max_size_bytes)
             return context
 
     # Phase 4: Aggressive truncation if still over limit
     # Last resort: Keep only minimal data (10 metrics, 10 logs, 5 changes)
     if context.size_bytes() > max_size_bytes:
+        logger.warning(
+            json.dumps(
+                {
+                    "message": "Applying aggressive truncation (phase 4)",
+                    "correlationId": context.incident_id,
+                    "sizeBeforePhase4": context.size_bytes(),
+                }
+            )
+        )
         # Use negative indexing to get last N entries
         if "timeSeries" in context.metrics:
             context.metrics["timeSeries"] = context.metrics["timeSeries"][-10:]
@@ -613,15 +683,23 @@ def enforce_size_constraint(  # noqa: C901
         if "entries" in context.changes:
             context.changes["entries"] = context.changes["entries"][-5:]
 
+    _log_truncation_complete(context, max_size_bytes)
+    return context
+
+
+def _log_truncation_complete(context: Any, max_size_bytes: int) -> None:
+    """Emit a final INFO log after truncation completes."""
+    final_size = context.size_bytes()
     logger.info(
         json.dumps(
             {
                 "message": "Context truncated to meet size constraint",
                 "correlationId": context.incident_id,
-                "finalSize": context.size_bytes(),
-                "maxSize": max_size_bytes,
+                "finalSizeBytes": final_size,
+                "maxSizeBytes": max_size_bytes,
+                "remainingMetricsTimeSeriesCount": len(context.metrics.get("timeSeries", [])),
+                "remainingLogsCount": len(context.logs.get("entries", [])),
+                "remainingChangesCount": len(context.changes.get("entries", [])),
             }
         )
     )
-
-    return context

@@ -16,6 +16,12 @@ variable "aws_account_id" {
   type        = string
 }
 
+variable "dynamodb_table_name" {
+  description = "Name of the DynamoDB table for incident storage"
+  type        = string
+  default     = "incident-analysis-store"
+}
+
 variable "tags" {
   description = "Tags to apply to all IAM resources"
   type        = map(string)

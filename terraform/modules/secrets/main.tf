@@ -1,6 +1,8 @@
 # Secrets Manager module for storing notification service credentials
 # Validates Requirements: 14.1, 14.2, 14.5
 
+data "aws_caller_identity" "current" {}
+
 # KMS key for encrypting secrets
 resource "aws_kms_key" "secrets" {
   description             = "KMS key for encrypting Secrets Manager secrets"
@@ -14,6 +16,38 @@ resource "aws_kms_key" "secrets" {
       Project = "AI-SRE-Portfolio"
     }
   )
+}
+
+resource "aws_kms_key_policy" "secrets" {
+  key_id = aws_kms_key.secrets.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Id      = "key-default-1"
+    Statement = [
+      {
+        Sid    = "EnableIAMUserPermissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowEventBridgeToEncrypt"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action = [
+          "kms:GenerateDataKey",
+          "kms:Decrypt"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 resource "aws_kms_alias" "secrets" {

@@ -6,22 +6,23 @@ for infrastructure incidents. It constructs a structured prompt from the
 correlation engine's output, invokes Claude with retry logic, and parses
 the response into a structured analysis report.
 
-The function implements:
-- Bedrock client wrapper with retry logic
-- Parameter Store client for prompt template retrieval
-- Prompt construction from structured context
-- LLM response parsing with fallback handling
-- Circuit breaker pattern for Bedrock calls
-- Metadata extraction (token usage, model version, latency)
+Sub-module responsibilities
+----------------------------
+circuit_breaker.py  – CircuitBreaker class + Lambda-global instance
+prompt_builder.py   – SSM template retrieval + prompt construction
+response_parser.py  – 3-level fallback parsing + LLMParseLevel metric
+
+This file is the orchestrating entry point only; all domain logic lives in
+the sub-modules listed above.
 """
 
 import json
 import logging
 import os
+import sys
 import time
 import traceback
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict
 
 import boto3
@@ -31,109 +32,42 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# ---------------------------------------------------------------------------
+# Sub-module imports
+# ---------------------------------------------------------------------------
+# circuit_breaker, prompt_builder, and response_parser live alongside this
+# file in the same package directory.
+sys.path.insert(0, os.path.dirname(__file__))
 
-class CircuitState(Enum):
-    """Circuit breaker states."""
+from circuit_breaker import CircuitBreaker, CircuitState, bedrock_circuit_breaker  # noqa: E402
+from prompt_builder import (  # noqa: E402
+    construct_prompt,
+    get_default_prompt_template,
+    retrieve_prompt_template,
+)
+from response_parser import parse_llm_response  # noqa: E402
 
-    CLOSED = "closed"  # Normal operation
-    OPEN = "open"  # Failing, reject requests
-    HALF_OPEN = "half_open"  # Testing recovery
-
-
-class CircuitBreaker:
-    """
-    Circuit breaker pattern for external service calls.
-
-    Prevents cascading failures by opening the circuit after a threshold
-    of consecutive failures, then testing recovery after a timeout.
-    """
-
-    def __init__(self, failure_threshold: int = 5, timeout_seconds: int = 60):
-        """
-        Initialize circuit breaker.
-
-        Args:
-            failure_threshold: Number of failures before opening circuit
-            timeout_seconds: Seconds to wait before testing recovery
-        """
-        self.failure_threshold = failure_threshold
-        self.timeout_seconds = timeout_seconds
-        self.failure_count = 0
-        self.last_failure_time: float | None = None
-        self.state = CircuitState.CLOSED
-
-    def call(self, func, *args, **kwargs):
-        """
-        Execute function with circuit breaker protection.
-
-        Args:
-            func: Function to execute
-            *args: Positional arguments for function
-            **kwargs: Keyword arguments for function
-
-        Returns:
-            Function result
-
-        Raises:
-            Exception: If circuit is open or function fails
-        """
-        # CIRCUIT BREAKER STATE MACHINE:
-        # CLOSED -> OPEN: After failure_threshold consecutive failures
-        # OPEN -> HALF_OPEN: After timeout_seconds elapsed
-        # HALF_OPEN -> CLOSED: On successful call
-        # HALF_OPEN -> OPEN: On failed call
-
-        if self.state == CircuitState.OPEN:
-            # Check if timeout has elapsed to test recovery
-            if (
-                self.last_failure_time
-                and (time.time() - self.last_failure_time) > self.timeout_seconds
-            ):
-                # Transition to HALF_OPEN to test if service recovered
-                self.state = CircuitState.HALF_OPEN
-                logger.info("Circuit breaker transitioning to HALF_OPEN")
-            else:
-                # Circuit still open - fail fast without calling external service
-                # This prevents cascading failures and gives service time to recover
-                raise Exception("Circuit breaker is OPEN - rejecting request")
-
-        try:
-            # Attempt to call the function
-            result = func(*args, **kwargs)
-            # Success - reset failure count and close circuit
-            self.on_success()
-            return result
-        except Exception:
-            # Failure - increment counter and potentially open circuit
-            self.on_failure()
-            # Re-raise exception for caller to handle
-            raise
-
-    def on_success(self):
-        """Handle successful call."""
-        self.failure_count = 0
-        if self.state == CircuitState.HALF_OPEN:
-            logger.info("Circuit breaker transitioning to CLOSED")
-        self.state = CircuitState.CLOSED
-
-    def on_failure(self):
-        """Handle failed call."""
-        self.failure_count += 1
-        self.last_failure_time = time.time()
-
-        if self.failure_count >= self.failure_threshold:
-            logger.warning(f"Circuit breaker opening after {self.failure_count} failures")
-            self.state = CircuitState.OPEN
-
-
-# Global circuit breaker for Bedrock calls
-bedrock_circuit_breaker = CircuitBreaker(failure_threshold=5, timeout_seconds=60)
-
-# Import metrics utility
-import sys  # noqa: E402
-
+# Shared metrics utility
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 from metrics import put_llm_invocation_metric  # noqa: E402
+
+# Re-export sub-module symbols that are directly referenced by existing tests
+# so that ``from llm_analyzer import lambda_function`` continues to expose
+# the same public API that was present before the refactor.
+__all__ = [
+    "lambda_handler",
+    "invoke_bedrock",
+    "create_fallback_report",
+    "extract_metadata",
+    # Sub-module re-exports
+    "CircuitBreaker",
+    "CircuitState",
+    "bedrock_circuit_breaker",
+    "construct_prompt",
+    "get_default_prompt_template",
+    "retrieve_prompt_template",
+    "parse_llm_response",
+]
 
 
 def get_bedrock_client():
@@ -154,94 +88,6 @@ def get_ssm_client():
         boto3 SSM client
     """
     return boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "us-east-1"))
-
-
-def retrieve_prompt_template(
-    ssm_client, parameter_name: str = "/incident-analysis/prompt-template"
-) -> Dict[str, str]:
-    """
-    Retrieve prompt template from Parameter Store.
-
-    Args:
-        ssm_client: boto3 SSM client
-        parameter_name: Parameter Store parameter name
-
-    Returns:
-        Dict with 'template' and 'version' keys
-
-    Raises:
-        Exception: If parameter retrieval fails
-    """
-    try:
-        response = ssm_client.get_parameter(Name=parameter_name, WithDecryption=False)
-
-        template = response["Parameter"]["Value"]
-        version = str(response["Parameter"]["Version"])
-
-        logger.info(f"Retrieved prompt template version {version}")
-
-        return {"template": template, "version": version}
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        if error_code == "ParameterNotFound":
-            logger.warning(f"Prompt template not found at {parameter_name}, using default")
-            return {"template": get_default_prompt_template(), "version": "default"}
-        else:
-            logger.error(f"Failed to retrieve prompt template: {e}")
-            raise
-
-
-def get_default_prompt_template() -> str:
-    """
-    Get default prompt template if Parameter Store retrieval fails.
-
-    Returns:
-        Default prompt template string
-    """
-    return """You are an expert Site Reliability Engineer analyzing an infrastructure incident.
-
-TASK: Analyze the provided incident data and generate a root-cause hypothesis with supporting evidence.
-
-INPUT DATA:
-{structured_context}
-
-OUTPUT FORMAT (JSON):
-{{
-  "rootCauseHypothesis": "Single sentence hypothesis",
-  "confidence": "high|medium|low",
-  "evidence": ["Specific data point 1", "Specific data point 2"],
-  "contributingFactors": ["Factor 1", "Factor 2"],
-  "recommendedActions": ["Action 1", "Action 2"]
-}}
-
-CONSTRAINTS:
-- Base hypothesis ONLY on provided data (no speculation)
-- Cite specific metrics, logs, or changes as evidence
-- Confidence = high if multiple correlated signals, medium if single signal, low if ambiguous
-- Recommended actions must be specific and actionable
-- Keep response under 500 tokens
-
-ANALYSIS:"""
-
-
-def construct_prompt(template: str, structured_context: Dict[str, Any]) -> str:
-    """
-    Construct LLM prompt from template and structured context.
-
-    Args:
-        template: Prompt template string
-        structured_context: Normalized incident context
-
-    Returns:
-        Complete prompt string
-    """
-    # Format structured context as readable JSON
-    context_json = json.dumps(structured_context, indent=2)
-
-    # Inject context into template
-    prompt = template.replace("{structured_context}", context_json)
-
-    return prompt
 
 
 def invoke_bedrock(
@@ -270,12 +116,14 @@ def invoke_bedrock(
     start_time = time.time()
 
     try:
-        # Construct request body for Claude
+        # Construct request body for Claude Messages API (Claude 3+)
         request_body = {
-            "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
             "temperature": temperature,
-            "max_tokens_to_sample": max_tokens,
-            "stop_sequences": ["\n\nHuman:"],
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
         }
 
         # Invoke model
@@ -288,7 +136,7 @@ def invoke_bedrock(
 
         # Parse response
         response_body = json.loads(response["body"].read())
-        completion = response_body.get("completion", "")
+        completion = response_body.get("content", [{}])[0].get("text", "")
 
         latency = time.time() - start_time
 
@@ -319,123 +167,6 @@ def invoke_bedrock(
         else:
             # Non-retryable error
             raise Exception(f"Bedrock invocation failed: {error_code}")
-
-
-def parse_llm_response(response_text: str) -> Dict[str, Any]:
-    """
-    Parse LLM response into structured analysis.
-
-    Attempts to extract JSON from the response. If parsing fails,
-    creates a structured response from the text.
-
-    Args:
-        response_text: Raw LLM response text
-
-    Returns:
-        Structured analysis dict
-    """
-    # LLM RESPONSE PARSING ALGORITHM:
-    # Strategy: Robust parsing with multiple fallback levels
-    # Level 1: Extract and parse JSON from response
-    # Level 2: Create structured response from text if JSON invalid
-    # Level 3: Return minimal fallback if all parsing fails
-    # Reason: LLMs may return valid analysis in non-JSON format
-
-    try:
-        # Level 1: Try to find JSON in response
-        # Look for content between first { and last }
-        # This handles cases where LLM adds explanatory text before/after JSON
-        start_idx = response_text.find("{")
-        end_idx = response_text.rfind("}")
-
-        if start_idx != -1 and end_idx != -1:
-            json_str = response_text[start_idx : end_idx + 1]
-            analysis = json.loads(json_str)
-
-            # Validate required fields exist
-            required_fields = [
-                "rootCauseHypothesis",
-                "confidence",
-                "evidence",
-                "contributingFactors",
-                "recommendedActions",
-            ]
-
-            if all(field in analysis for field in required_fields):
-                # FIELD VALIDATION AND NORMALIZATION:
-                # Ensure all fields have correct types to prevent downstream errors
-                # Convert None values and normalize data types
-
-                # rootCauseHypothesis must be a non-null string
-                if (
-                    not isinstance(analysis["rootCauseHypothesis"], str)
-                    or analysis["rootCauseHypothesis"] is None
-                ):
-                    raise ValueError("rootCauseHypothesis must be a string")
-
-                # confidence must be a non-null string
-                if not isinstance(analysis["confidence"], str) or analysis["confidence"] is None:
-                    raise ValueError("confidence must be a string")
-
-                # Normalize confidence to lowercase for consistency
-                analysis["confidence"] = analysis["confidence"].lower()
-
-                # evidence must be a list
-                if not isinstance(analysis["evidence"], list) or analysis["evidence"] is None:
-                    raise ValueError("evidence must be a list")
-
-                # contributingFactors must be a list
-                if (
-                    not isinstance(analysis["contributingFactors"], list)
-                    or analysis["contributingFactors"] is None
-                ):
-                    raise ValueError("contributingFactors must be a list")
-
-                # recommendedActions must be a list
-                if (
-                    not isinstance(analysis["recommendedActions"], list)
-                    or analysis["recommendedActions"] is None
-                ):
-                    raise ValueError("recommendedActions must be a list")
-
-                # Ensure all list items are strings (filter out None and convert to string)
-                analysis["evidence"] = [
-                    str(item) for item in analysis["evidence"] if item is not None
-                ]
-                analysis["contributingFactors"] = [
-                    str(item) for item in analysis["contributingFactors"] if item is not None
-                ]
-                analysis["recommendedActions"] = [
-                    str(item) for item in analysis["recommendedActions"] if item is not None
-                ]
-
-                return dict(analysis)
-
-        # Level 2: If JSON parsing failed, create structured response from text
-        # This handles cases where LLM provides analysis in natural language
-        logger.warning("Failed to parse JSON from LLM response, using text extraction")
-
-        return {
-            "rootCauseHypothesis": (
-                response_text[:200] if response_text else "Unable to parse analysis"
-            ),
-            "confidence": "low",
-            "evidence": [],
-            "contributingFactors": [],
-            "recommendedActions": ["Review incident data manually", "Check LLM response format"],
-        }
-
-    except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
-        # Level 3: Complete parsing failure - return minimal fallback
-        logger.error(f"JSON parsing failed: {e}")
-
-        return {
-            "rootCauseHypothesis": "Failed to parse LLM response",
-            "confidence": "none",
-            "evidence": [],
-            "contributingFactors": [],
-            "recommendedActions": ["Review incident data manually", "Check LLM response format"],
-        }
 
 
 def create_fallback_report(incident_id: str, error_message: str) -> Dict[str, Any]:
@@ -524,50 +255,58 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     try:
         logger.info(
-            {
-                "message": "LLM Analyzer invoked",
-                "correlationId": correlation_id,
-                "contextSize": len(json.dumps(structured_context)),
-            }
+            json.dumps(
+                {
+                    "message": "LLM Analyzer invoked",
+                    "correlationId": correlation_id,
+                    "contextSize": len(json.dumps(structured_context)),
+                }
+            )
         )
 
         # Initialize clients
         bedrock_client = get_bedrock_client()
         ssm_client = get_ssm_client()
 
-        # Retrieve prompt template
-        prompt_info = retrieve_prompt_template(ssm_client)
+        # Retrieve prompt template (delegated to prompt_builder)
+        param_name = os.environ.get("PROMPT_TEMPLATE_PARAM", "/incident-analysis/prompt-template")
+        prompt_info = retrieve_prompt_template(ssm_client, parameter_name=param_name)
         template = prompt_info["template"]
         prompt_version = prompt_info["version"]
 
-        # Construct prompt
+        # Construct prompt (delegated to prompt_builder)
         prompt = construct_prompt(template, structured_context)
         prompt_length = len(prompt)
 
         logger.info(
-            {
-                "message": "Prompt constructed",
-                "correlationId": correlation_id,
-                "promptLength": prompt_length,
-                "promptVersion": prompt_version,
-            }
+            json.dumps(
+                {
+                    "message": "Prompt constructed",
+                    "correlationId": correlation_id,
+                    "promptLength": prompt_length,
+                    "promptVersion": prompt_version,
+                }
+            )
         )
 
-        # Invoke Bedrock with circuit breaker
+        # Invoke Bedrock with circuit breaker (bedrock_circuit_breaker is Lambda-global)
+        model_id = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
         try:
-            llm_response = bedrock_circuit_breaker.call(invoke_bedrock, bedrock_client, prompt)
+            llm_response = bedrock_circuit_breaker.call(invoke_bedrock, bedrock_client, prompt, model_id)
         except Exception as e:
             if "Circuit breaker is OPEN" in str(e):
                 logger.error(
-                    {
-                        "message": "Circuit breaker is OPEN, returning fallback",
-                        "correlationId": correlation_id,
-                    }
+                    json.dumps(
+                        {
+                            "message": "Circuit breaker is OPEN, returning fallback",
+                            "correlationId": correlation_id,
+                        }
+                    )
                 )
                 return create_fallback_report(correlation_id, "Circuit breaker open")
             raise
 
-        # Parse LLM response
+        # Parse LLM response (delegated to response_parser; logs raw response at DEBUG)
         analysis = parse_llm_response(llm_response["response"])
 
         # Extract metadata
@@ -582,12 +321,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
         logger.info(
-            {
-                "message": "Analysis completed successfully",
-                "correlationId": correlation_id,
-                "confidence": analysis["confidence"],
-                "latency": metadata["latency"],
-            }
+            json.dumps(
+                {
+                    "message": "Analysis completed successfully",
+                    "correlationId": correlation_id,
+                    "confidence": analysis["confidence"],
+                    "latency": metadata["latency"],
+                }
+            )
         )
 
         # Emit LLM invocation metrics
@@ -606,13 +347,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         error_message = e.response["Error"]["Message"]
 
         logger.error(
-            {
-                "message": "AWS service error",
-                "correlationId": correlation_id,
-                "errorCode": error_code,
-                "errorMessage": error_message,
-                "stackTrace": traceback.format_exc(),
-            }
+            json.dumps(
+                {
+                    "message": "AWS service error",
+                    "correlationId": correlation_id,
+                    "errorCode": error_code,
+                    "errorMessage": error_message,
+                    "stackTrace": traceback.format_exc(),
+                }
+            )
         )
 
         # Re-raise retryable errors for Step Functions retry mechanism
@@ -634,13 +377,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(
-            {
-                "message": "Unexpected error",
-                "correlationId": correlation_id,
-                "error": str(e),
-                "errorType": type(e).__name__,
-                "stackTrace": traceback.format_exc(),
-            }
+            json.dumps(
+                {
+                    "message": "Unexpected error",
+                    "correlationId": correlation_id,
+                    "error": str(e),
+                    "errorType": type(e).__name__,
+                    "stackTrace": traceback.format_exc(),
+                }
+            )
         )
 
         # Emit failure metric

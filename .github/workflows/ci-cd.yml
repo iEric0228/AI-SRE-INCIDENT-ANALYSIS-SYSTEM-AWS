@@ -205,6 +205,35 @@ jobs:
             --tb=short
 
   # ============================================================================
+  # Integration Tests (Mocked — runs on PRs without AWS credentials)
+  # ============================================================================
+
+  integration-tests-mock:
+    name: Integration Tests (Mock)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run integration tests (mocked AWS)
+        run: |
+          pytest tests/integration/ \
+            -v \
+            --tb=short \
+            -m "not aws"
+
+  # ============================================================================
   # Terraform Plan (PR only)
   # ============================================================================
 
@@ -212,7 +241,7 @@ jobs:
     name: Terraform Plan (Dev)
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    needs: [python-lint, terraform-validate, unit-tests, property-tests, infrastructure-tests]
+    needs: [python-lint, terraform-validate, unit-tests, property-tests, infrastructure-tests, integration-tests-mock]
     permissions:
       id-token: write
       contents: read

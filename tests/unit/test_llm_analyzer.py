@@ -774,3 +774,139 @@ class TestDefaultPromptTemplate:
         assert "evidence" in template
         assert "contributingFactors" in template
         assert "recommendedActions" in template
+
+
+class TestResponseParserObservability:
+    """Tests for Fix 3: raw LLM response logged at DEBUG + LLMParseLevel metric."""
+
+    def test_parse_level_1_metric_emitted_for_valid_json(self, sample_llm_response):
+        """parse_llm_response should emit LLMParseLevel=1 when JSON parses cleanly."""
+        from llm_analyzer.response_parser import parse_llm_response as _parse
+
+        with patch("llm_analyzer.response_parser.put_metric") as mock_put:
+            _parse(json.dumps(sample_llm_response))
+
+        level_calls = [
+            c for c in mock_put.call_args_list
+            if (c.args and c.args[0] == "LLMParseLevel") or c.kwargs.get("metric_name") == "LLMParseLevel"
+        ]
+        assert len(level_calls) == 1
+        # value should be 1.0 (level 1)
+        call = level_calls[0]
+        value_arg = call.args[1] if len(call.args) > 1 else call.kwargs.get("value")
+        assert value_arg == 1.0
+
+    def test_parse_level_2_metric_emitted_for_non_json(self):
+        """parse_llm_response should emit LLMParseLevel=2 when response is plain text."""
+        from llm_analyzer.response_parser import parse_llm_response as _parse
+
+        with patch("llm_analyzer.response_parser.put_metric") as mock_put:
+            _parse("This is a plain text answer without any JSON")
+
+        level_calls = [
+            c for c in mock_put.call_args_list
+            if (c.args and c.args[0] == "LLMParseLevel") or c.kwargs.get("metric_name") == "LLMParseLevel"
+        ]
+        assert len(level_calls) == 1
+        call = level_calls[0]
+        value_arg = call.args[1] if len(call.args) > 1 else call.kwargs.get("value")
+        assert value_arg == 2.0
+
+    def test_parse_level_3_metric_emitted_for_bad_json(self):
+        """parse_llm_response should emit LLMParseLevel=3 when validation raises an exception.
+
+        Level 3 is triggered when the JSON contains all required fields but a field
+        that must be a string is not (e.g. rootCauseHypothesis=123), causing the
+        explicit ValueError inside the validation block to be caught and re-routed
+        to the except handler, which emits level 3.
+        """
+        from llm_analyzer.response_parser import parse_llm_response as _parse
+
+        # Provide all required keys but with rootCauseHypothesis as an integer.
+        # The parser finds valid JSON, enters the field-validation block, and
+        # raises ValueError("rootCauseHypothesis must be a string"), which is
+        # caught by the except handler → level 3.
+        bad_response = json.dumps(
+            {
+                "rootCauseHypothesis": 123,  # wrong type → ValueError inside try block
+                "confidence": "high",
+                "evidence": [],
+                "contributingFactors": [],
+                "recommendedActions": [],
+            }
+        )
+
+        with patch("llm_analyzer.response_parser.put_metric") as mock_put:
+            _parse(bad_response)
+
+        level_calls = [
+            c for c in mock_put.call_args_list
+            if (c.args and c.args[0] == "LLMParseLevel") or c.kwargs.get("metric_name") == "LLMParseLevel"
+        ]
+        assert len(level_calls) == 1
+        call = level_calls[0]
+        value_arg = call.args[1] if len(call.args) > 1 else call.kwargs.get("value")
+        assert value_arg == 3.0
+
+    def test_raw_response_logged_at_debug_before_parsing(self, sample_llm_response):
+        """parse_llm_response should log the raw response at DEBUG before any parsing."""
+        import logging
+        from llm_analyzer.response_parser import parse_llm_response as _parse
+
+        debug_messages = []
+
+        class _DebugCapture(logging.Handler):
+            def emit(self, record):
+                if record.levelno == logging.DEBUG:
+                    debug_messages.append(record.getMessage())
+
+        handler = _DebugCapture()
+        parser_logger = logging.getLogger("llm_analyzer.response_parser")
+        original_level = parser_logger.level
+        parser_logger.setLevel(logging.DEBUG)
+        parser_logger.addHandler(handler)
+
+        try:
+            with patch("llm_analyzer.response_parser.put_metric"):
+                raw = json.dumps(sample_llm_response)
+                _parse(raw)
+        finally:
+            parser_logger.removeHandler(handler)
+            parser_logger.setLevel(original_level)
+
+        assert any("rawResponse" in m or "Raw LLM" in m for m in debug_messages), (
+            "Expected a DEBUG log containing raw response; got: " + str(debug_messages)
+        )
+
+
+class TestCircuitBreakerSubModule:
+    """Tests for Fix 4 & 5: circuit_breaker sub-module + cold-start log."""
+
+    def test_circuit_breaker_module_exposes_global_instance(self):
+        """bedrock_circuit_breaker should be importable from circuit_breaker sub-module."""
+        from llm_analyzer.circuit_breaker import bedrock_circuit_breaker, CircuitBreaker
+
+        assert isinstance(bedrock_circuit_breaker, CircuitBreaker)
+
+    def test_circuit_breaker_re_exported_from_lambda_function(self):
+        """lambda_function should re-export CircuitBreaker and bedrock_circuit_breaker."""
+        assert hasattr(lambda_function, "CircuitBreaker")
+        assert hasattr(lambda_function, "CircuitState")
+        assert hasattr(lambda_function, "bedrock_circuit_breaker")
+        assert isinstance(
+            lambda_function.bedrock_circuit_breaker, lambda_function.CircuitBreaker
+        )
+
+    def test_prompt_builder_re_exported_from_lambda_function(self):
+        """lambda_function should re-export prompt_builder helpers."""
+        assert hasattr(lambda_function, "retrieve_prompt_template")
+        assert hasattr(lambda_function, "get_default_prompt_template")
+        assert hasattr(lambda_function, "construct_prompt")
+
+    def test_response_parser_re_exported_from_lambda_function(self):
+        """lambda_function should re-export parse_llm_response."""
+        assert hasattr(lambda_function, "parse_llm_response")
+        # Ensure it is callable and returns a dict
+        with patch("llm_analyzer.response_parser.put_metric"):
+            result = lambda_function.parse_llm_response("")
+        assert isinstance(result, dict)

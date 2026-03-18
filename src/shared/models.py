@@ -13,6 +13,45 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 
+def _serialize_timestamp(value: Any, field_name: str) -> str:
+    """
+    Serialize a timestamp field to an ISO-8601 string for JSON output.
+
+    Accepts ``datetime`` objects or strings that can be parsed as ISO-8601.
+    Raises ``ValueError`` for any other type so that callers receive an
+    explicit, descriptive error rather than silently producing invalid output.
+
+    Args:
+        value: The timestamp value to serialize.
+        field_name: Human-readable field identifier used in error messages.
+
+    Returns:
+        ISO-8601 string representation of the timestamp.
+
+    Raises:
+        ValueError: If ``value`` is neither a ``datetime`` nor a parseable
+                    ISO-8601 string.
+    """
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, str):
+        # Validate that the string is actually parseable as ISO-8601 before
+        # returning it verbatim.  fromisoformat raises ValueError on failure.
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError(
+                f"{field_name} contains an unparseable timestamp string: {value!r}"
+            )
+        return value
+
+    raise ValueError(
+        f"{field_name} must be a datetime object or a valid ISO-8601 string, "
+        f"got {type(value).__name__!r}: {value!r}"
+    )
+
+
 class AlarmState(Enum):
     """CloudWatch Alarm states."""
 
@@ -97,11 +136,7 @@ class IncidentEvent:
             "alarmName": self.alarm_name,
             "alarmArn": self.alarm_arn,
             "resourceArn": self.resource_arn,
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
+            "timestamp": _serialize_timestamp(self.timestamp, "IncidentEvent.timestamp"),
             "alarmState": self.alarm_state,
             "metricName": self.metric_name,
             "namespace": self.namespace,
@@ -160,11 +195,7 @@ class MetricDatapoint:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
+            "timestamp": _serialize_timestamp(self.timestamp, "MetricDatapoint.timestamp"),
             "value": self.value,
             "unit": self.unit,
         }
@@ -318,11 +349,7 @@ class LogEntry:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
+            "timestamp": _serialize_timestamp(self.timestamp, "LogEntry.timestamp"),
             "logLevel": self.log_level,
             "message": self.message,
             "logStream": self.log_stream,
@@ -422,11 +449,7 @@ class ChangeEvent:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
+            "timestamp": _serialize_timestamp(self.timestamp, "ChangeEvent.timestamp"),
             "changeType": self.change_type,
             "eventName": self.event_name,
             "user": self.user,
@@ -602,11 +625,7 @@ class StructuredContext:
         """Convert to dictionary for JSON serialization."""
         return {
             "incidentId": self.incident_id,
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
+            "timestamp": _serialize_timestamp(self.timestamp, "StructuredContext.timestamp"),
             "resource": self.resource.to_dict(),
             "alarm": self.alarm.to_dict(),
             "metrics": self.metrics,
@@ -751,11 +770,7 @@ class AnalysisReport:
         """Convert to dictionary for JSON serialization."""
         return {
             "incidentId": self.incident_id,
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
+            "timestamp": _serialize_timestamp(self.timestamp, "AnalysisReport.timestamp"),
             "analysis": self.analysis.to_dict(),
             "metadata": self.metadata.to_dict(),
         }

@@ -246,7 +246,8 @@ data "aws_iam_policy_document" "llm_analyzer" {
       "bedrock:InvokeModel"
     ]
     resources = [
-      "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-v2*"
+      "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+      "arn:aws:bedrock:${var.aws_region}:${var.aws_account_id}:inference-profile/us.anthropic.claude-*"
     ]
   }
 
@@ -354,6 +355,17 @@ data "aws_iam_policy_document" "notification_service" {
     ]
   }
 
+  # KMS permissions for encrypted SNS topic and Secrets Manager
+  statement {
+    sid    = "KMSAccess"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey"
+    ]
+    resources = ["*"]
+  }
+
   # CloudWatch Logs permissions for Lambda function logs
   statement {
     sid    = "CloudWatchLogsWrite"
@@ -375,6 +387,56 @@ data "aws_iam_policy_document" "notification_service" {
     actions = [
       "cloudwatch:PutMetricData"
     ]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["AI-SRE-IncidentAnalysis"]
+    }
+  }
+}
+
+# Event Transformer Lambda Role
+resource "aws_iam_role" "event_transformer" {
+  name               = "${var.project_name}-event-transformer-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "event_transformer" {
+  name   = "${var.project_name}-event-transformer-policy"
+  role   = aws_iam_role.event_transformer.id
+  policy = data.aws_iam_policy_document.event_transformer.json
+}
+
+data "aws_iam_policy_document" "event_transformer" {
+  statement {
+    sid     = "StepFunctionsStart"
+    effect  = "Allow"
+    actions = ["states:StartExecution"]
+    resources = [
+      "arn:aws:states:${var.aws_region}:${var.aws_account_id}:stateMachine:${var.project_name}-orchestrator"
+    ]
+  }
+
+  statement {
+    sid    = "CloudWatchLogsWrite"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/lambda/${var.project_name}-event-transformer*"
+    ]
+  }
+
+  statement {
+    sid     = "CloudWatchMetricsWrite"
+    effect  = "Allow"
+    actions = ["cloudwatch:PutMetricData"]
     resources = ["*"]
     condition {
       test     = "StringEquals"
@@ -424,8 +486,19 @@ data "aws_iam_policy_document" "orchestrator" {
       "dynamodb:PutItem"
     ]
     resources = [
-      "arn:aws:dynamodb:${var.aws_region}:${var.aws_account_id}:table/${var.project_name}-incident-store"
+      "arn:aws:dynamodb:${var.aws_region}:${var.aws_account_id}:table/${var.dynamodb_table_name}"
     ]
+  }
+
+  # KMS permissions for encrypted DynamoDB table
+  statement {
+    sid    = "KMSDecrypt"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey"
+    ]
+    resources = ["*"]
   }
 
   # X-Ray tracing permissions

@@ -533,3 +533,144 @@ class TestCalculateStatistics:
         assert stats["max"] == 75.0
         assert stats["min"] == 75.0
         assert stats["p95"] == 75.0
+
+
+class TestParallelMetricCollection:
+    """Tests for parallel metric collection (Fix 1)."""
+
+    def test_multiple_metrics_collected_in_parallel(self, mock_cloudwatch_client):
+        """Test that multiple metrics are collected using ThreadPoolExecutor."""
+        now = datetime.utcnow()
+        event = {
+            "incidentId": "inc-parallel-001",
+            "resourceArn": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+            "timestamp": now.isoformat() + "Z",
+            "namespace": "AWS/Lambda",
+            "metricNames": ["Invocations", "Errors", "Duration"],
+        }
+
+        # Each call returns one datapoint
+        mock_cloudwatch_client.get_metric_statistics.return_value = {
+            "Datapoints": [
+                {
+                    "Timestamp": now,
+                    "Average": 10.0,
+                    "Maximum": 15.0,
+                    "Minimum": 5.0,
+                    "SampleCount": 1,
+                    "Unit": "Count",
+                }
+            ]
+        }
+
+        with (
+            patch("metrics_collector.lambda_function.cloudwatch", mock_cloudwatch_client),
+            patch("metrics_collector.lambda_function.put_collector_success_metric"),
+        ):
+            result = lambda_function.lambda_handler(event, None)
+
+        # All 3 metrics should be collected
+        assert result["status"] == "success"
+        assert len(result["metrics"]) == 3
+        metric_names = {m["metricName"] for m in result["metrics"]}
+        assert metric_names == {"Invocations", "Errors", "Duration"}
+
+    def test_partial_failure_does_not_abort_collection(self, mock_cloudwatch_client):
+        """Test that a single metric failure does not stop other metrics from being collected."""
+        now = datetime.utcnow()
+        event = {
+            "incidentId": "inc-parallel-002",
+            "resourceArn": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+            "timestamp": now.isoformat() + "Z",
+            "namespace": "AWS/Lambda",
+            "metricNames": ["Invocations", "Errors"],
+        }
+
+        call_count = {"n": 0}
+
+        def side_effect(**kwargs):
+            call_count["n"] += 1
+            if kwargs.get("MetricName") == "Errors":
+                from botocore.exceptions import ClientError
+                raise ClientError(
+                    {"Error": {"Code": "InvalidParameterValue", "Message": "bad param"}},
+                    "GetMetricStatistics",
+                )
+            return {
+                "Datapoints": [
+                    {
+                        "Timestamp": now,
+                        "Average": 5.0,
+                        "Maximum": 5.0,
+                        "Minimum": 5.0,
+                        "SampleCount": 1,
+                        "Unit": "Count",
+                    }
+                ]
+            }
+
+        mock_cloudwatch_client.get_metric_statistics.side_effect = side_effect
+
+        with (
+            patch("metrics_collector.lambda_function.cloudwatch", mock_cloudwatch_client),
+            patch("metrics_collector.lambda_function.put_collector_success_metric"),
+        ):
+            result = lambda_function.lambda_handler(event, None)
+
+        # "Invocations" should succeed; "Errors" fails silently
+        assert result["status"] == "success"
+        assert len(result["metrics"]) == 1
+        assert result["metrics"][0]["metricName"] == "Invocations"
+
+
+class TestSSMTimeWindow:
+    """Tests for SSM-configurable time window (Fix 7)."""
+
+    def test_calculate_time_range_with_custom_window(self):
+        """Test that calculate_time_range respects explicit override parameters."""
+        incident_time = datetime(2024, 6, 1, 12, 0, 0)
+        start, end = lambda_function.calculate_time_range(
+            incident_time, lookback_minutes=30, lookahead_minutes=10
+        )
+        assert (incident_time - start).total_seconds() == 30 * 60
+        assert (end - incident_time).total_seconds() == 10 * 60
+
+    def test_calculate_time_range_uses_module_defaults(self):
+        """Test that calculate_time_range uses module-level SSM-backed defaults when not overridden."""
+        incident_time = datetime(2024, 6, 1, 12, 0, 0)
+        start, end = lambda_function.calculate_time_range(incident_time)
+        # Window must be at least 60+5 minutes (the hardcoded fallback defaults)
+        total_minutes = (end - start).total_seconds() / 60
+        assert total_minutes >= 65  # at minimum the default 60+5 window
+
+    def test_load_time_window_from_ssm_returns_defaults_on_failure(self):
+        """Test that _load_time_window_from_ssm falls back to defaults when SSM fails."""
+        with patch("metrics_collector.lambda_function.boto3") as mock_boto3:
+            mock_ssm = MagicMock()
+            mock_ssm.get_parameters.side_effect = Exception("SSM unreachable")
+            mock_boto3.client.return_value = mock_ssm
+
+            lookback, lookahead = lambda_function._load_time_window_from_ssm()
+
+        assert lookback == lambda_function._DEFAULT_LOOKBACK_MINUTES
+        assert lookahead == lambda_function._DEFAULT_LOOKAHEAD_MINUTES
+
+    def test_load_time_window_from_ssm_reads_parameters(self):
+        """Test that _load_time_window_from_ssm uses SSM values when available."""
+        ssm_lookback_param = lambda_function._SSM_PARAM_LOOKBACK
+        ssm_lookahead_param = lambda_function._SSM_PARAM_LOOKAHEAD
+
+        with patch("metrics_collector.lambda_function.boto3") as mock_boto3:
+            mock_ssm = MagicMock()
+            mock_ssm.get_parameters.return_value = {
+                "Parameters": [
+                    {"Name": ssm_lookback_param, "Value": "45"},
+                    {"Name": ssm_lookahead_param, "Value": "15"},
+                ]
+            }
+            mock_boto3.client.return_value = mock_ssm
+
+            lookback, lookahead = lambda_function._load_time_window_from_ssm()
+
+        assert lookback == 45
+        assert lookahead == 15

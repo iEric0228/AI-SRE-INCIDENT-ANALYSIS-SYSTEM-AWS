@@ -37,16 +37,19 @@ package_function() {
   rm -rf "${BUILD_DIR}" "${FUNC_DIR}/deployment.zip"
   mkdir -p "${BUILD_DIR}"
 
-  # Copy function code
-  cp "${FUNC_DIR}/lambda_function.py" "${BUILD_DIR}/"
-  echo "  Copied lambda_function.py"
+  # Copy function code (lambda_function.py + any sibling .py modules like circuit_breaker.py)
+  for pyfile in "${FUNC_DIR}"/*.py; do
+    [ -f "$pyfile" ] && cp "$pyfile" "${BUILD_DIR}/"
+  done
+  echo "  Copied function .py files"
 
-  # Copy shared modules
+  # Copy shared modules to build root so imports like 'from metrics import ...' work
+  # in Lambda (where sys.path includes /var/task/ but not /var/task/shared/)
   if [ -d "${SRC_DIR}/shared" ]; then
-    cp -r "${SRC_DIR}/shared" "${BUILD_DIR}/shared"
+    cp "${SRC_DIR}/shared"/*.py "${BUILD_DIR}/"
     # Remove __pycache__
-    find "${BUILD_DIR}/shared" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-    echo "  Copied shared/ modules"
+    find "${BUILD_DIR}" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    echo "  Copied shared/ modules to build root"
   else
     echo "ERROR: ${SRC_DIR}/shared directory not found!"
     return 1
@@ -55,10 +58,10 @@ package_function() {
   # Install pip dependencies for notification_service only (requests)
   # All other functions only need boto3 which is pre-installed in Lambda runtime
   if [ "${func}" = "notification_service" ]; then
-    echo "  Installing requests package..."
-    pip install requests -t "${BUILD_DIR}" --quiet --no-deps 2>&1 || {
-      echo "  WARNING: pip install with --no-deps failed, retrying..."
-      pip install requests -t "${BUILD_DIR}" --quiet 2>&1 || true
+    echo "  Installing requests package (with dependencies)..."
+    python3 -m pip install requests -t "${BUILD_DIR}" --quiet 2>&1 || {
+      echo "  WARNING: pip install failed, retrying without cache..."
+      python3 -m pip install requests -t "${BUILD_DIR}" --quiet --no-cache-dir 2>&1 || true
     }
   fi
 
@@ -87,7 +90,7 @@ package_function() {
 }
 
 # Package all functions
-FUNCTIONS="metrics_collector logs_collector deploy_context_collector correlation_engine llm_analyzer notification_service"
+FUNCTIONS="event_transformer metrics_collector logs_collector deploy_context_collector correlation_engine llm_analyzer notification_service"
 FAILED=0
 
 for func in $FUNCTIONS; do

@@ -60,6 +60,11 @@ variable "alarm_period" {
   }
 }
 
+variable "sns_topic_arn" {
+  description = "SNS topic ARN for alarm actions (incident notification topic)"
+  type        = string
+}
+
 variable "evaluation_periods" {
   description = "Number of periods over which data is compared to the threshold"
   type        = number

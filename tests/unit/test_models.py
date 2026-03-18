@@ -28,6 +28,7 @@ from shared.models import (
     NotificationOutput,
     ResourceInfo,
     StructuredContext,
+    _serialize_timestamp,
 )
 
 
@@ -777,3 +778,135 @@ class TestEdgeCases:
             ttl=1705334400,
         )
         assert record.validate() is False
+
+
+# ============================================================================
+# Timestamp Type Guard Tests
+# ============================================================================
+
+
+class TestSerializeTimestamp:
+    """Tests for the _serialize_timestamp helper (Fix 6: timestamp type guards)."""
+
+    def test_datetime_object_serialized_to_isoformat(self):
+        """datetime objects should be converted to ISO-8601 strings."""
+        ts = datetime(2024, 1, 15, 14, 30, 0)
+        result = _serialize_timestamp(ts, "test.field")
+        assert result == "2024-01-15T14:30:00"
+
+    def test_valid_iso_string_returned_unchanged(self):
+        """Valid ISO-8601 strings should pass through unchanged."""
+        iso = "2024-01-15T14:30:00Z"
+        result = _serialize_timestamp(iso, "test.field")
+        assert result == iso
+
+    def test_valid_iso_string_with_offset_returned_unchanged(self):
+        """Valid ISO-8601 string with UTC offset should pass through."""
+        iso = "2024-01-15T14:30:00+00:00"
+        result = _serialize_timestamp(iso, "test.field")
+        assert result == iso
+
+    def test_invalid_string_raises_value_error(self):
+        """Non-ISO string should raise ValueError with the field name in the message."""
+        with pytest.raises(ValueError) as exc_info:
+            _serialize_timestamp("not-a-timestamp", "IncidentEvent.timestamp")
+        assert "IncidentEvent.timestamp" in str(exc_info.value)
+        assert "not-a-timestamp" in str(exc_info.value)
+
+    def test_integer_raises_value_error(self):
+        """An integer (Unix epoch) should raise ValueError rather than silently coercing."""
+        with pytest.raises(ValueError) as exc_info:
+            _serialize_timestamp(1705334400, "MetricDatapoint.timestamp")
+        assert "MetricDatapoint.timestamp" in str(exc_info.value)
+        assert "int" in str(exc_info.value)
+
+    def test_none_raises_value_error(self):
+        """None should raise ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            _serialize_timestamp(None, "ChangeEvent.timestamp")
+        assert "ChangeEvent.timestamp" in str(exc_info.value)
+
+    def test_dict_raises_value_error(self):
+        """A dict should raise ValueError."""
+        with pytest.raises(ValueError):
+            _serialize_timestamp({"ts": "2024-01-15"}, "LogEntry.timestamp")
+
+
+class TestTimestampTypeGuardsInModels:
+    """Integration tests: to_dict() raises ValueError for invalid timestamp types."""
+
+    def test_incident_event_to_dict_invalid_timestamp_raises(self):
+        """IncidentEvent.to_dict() should raise ValueError for non-datetime/string timestamp."""
+        event = IncidentEvent(
+            incident_id="test-123",
+            alarm_name="HighCPU",
+            alarm_arn="arn:aws:cloudwatch:us-east-1:123456789012:alarm:HighCPU",
+            resource_arn="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+            timestamp=99999,  # invalid type
+            alarm_state="ALARM",
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+        )
+        with pytest.raises(ValueError) as exc_info:
+            event.to_dict()
+        assert "IncidentEvent.timestamp" in str(exc_info.value)
+
+    def test_metric_datapoint_to_dict_invalid_timestamp_raises(self):
+        """MetricDatapoint.to_dict() should raise ValueError for invalid timestamp type."""
+        dp = MetricDatapoint(timestamp={"bad": "value"}, value=75.0, unit="Percent")
+        with pytest.raises(ValueError) as exc_info:
+            dp.to_dict()
+        assert "MetricDatapoint.timestamp" in str(exc_info.value)
+
+    def test_log_entry_to_dict_invalid_timestamp_raises(self):
+        """LogEntry.to_dict() should raise ValueError for invalid timestamp type."""
+        entry = LogEntry(
+            timestamp=None, log_level="ERROR", message="test", log_stream="stream"
+        )
+        with pytest.raises(ValueError) as exc_info:
+            entry.to_dict()
+        assert "LogEntry.timestamp" in str(exc_info.value)
+
+    def test_change_event_to_dict_invalid_timestamp_raises(self):
+        """ChangeEvent.to_dict() should raise ValueError for invalid timestamp type."""
+        change = ChangeEvent(
+            timestamp=3.14,
+            change_type="deployment",
+            event_name="UpdateFunctionCode",
+            user="deployer",
+            description="test",
+        )
+        with pytest.raises(ValueError) as exc_info:
+            change.to_dict()
+        assert "ChangeEvent.timestamp" in str(exc_info.value)
+
+    def test_incident_event_to_dict_valid_string_timestamp(self):
+        """IncidentEvent.to_dict() should accept a valid ISO string timestamp."""
+        event = IncidentEvent(
+            incident_id="test-123",
+            alarm_name="HighCPU",
+            alarm_arn="arn:aws:cloudwatch:us-east-1:123456789012:alarm:HighCPU",
+            resource_arn="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+            timestamp="2024-01-15T14:30:00Z",  # valid ISO string
+            alarm_state="ALARM",
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+        )
+        result = event.to_dict()
+        assert result["timestamp"] == "2024-01-15T14:30:00Z"
+
+    def test_incident_event_to_dict_valid_datetime_timestamp(self):
+        """IncidentEvent.to_dict() should accept a datetime timestamp."""
+        ts = datetime(2024, 1, 15, 14, 30, 0)
+        event = IncidentEvent(
+            incident_id="test-123",
+            alarm_name="HighCPU",
+            alarm_arn="arn:aws:cloudwatch:us-east-1:123456789012:alarm:HighCPU",
+            resource_arn="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+            timestamp=ts,
+            alarm_state="ALARM",
+            metric_name="CPUUtilization",
+            namespace="AWS/EC2",
+        )
+        result = event.to_dict()
+        assert "2024-01-15" in result["timestamp"]

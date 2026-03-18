@@ -796,3 +796,153 @@ class TestHelperFunctions:
         assert isinstance(result, datetime)
         # Should return current time
         assert result.year >= 2024
+
+
+class TestTruncationObservability:
+    """Tests for structured truncation logging + ContextTruncated metric (Fix 2)."""
+
+    def _make_large_event(self, now):
+        """Helper: build an event whose context exceeds 50KB."""
+        large_message = "X" * 1000
+        return {
+            "incident": {
+                "incidentId": "inc-truncation-obs",
+                "resourceArn": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+                "timestamp": now.isoformat() + "Z",
+                "alarmName": "Test",
+                "metricName": "Test",
+            },
+            "metrics": {
+                "status": "success",
+                "metrics": [
+                    {
+                        "metricName": "Test",
+                        "namespace": "AWS/Lambda",
+                        "datapoints": [
+                            {
+                                "timestamp": (now - timedelta(minutes=i)).isoformat() + "Z",
+                                "value": float(i),
+                                "unit": "Count",
+                            }
+                            for i in range(200)
+                        ],
+                        "statistics": {"avg": 100.0, "max": 199.0, "min": 0.0},
+                    }
+                ],
+                "collectionDuration": 1.0,
+            },
+            "logs": {
+                "status": "success",
+                "logs": [
+                    {
+                        "timestamp": (now - timedelta(minutes=i)).isoformat() + "Z",
+                        "logLevel": "ERROR",
+                        "message": f"error {i}: {large_message}",
+                        "logStream": "stream",
+                    }
+                    for i in range(100)
+                ],
+                "totalMatches": 100,
+                "returned": 100,
+                "collectionDuration": 1.0,
+            },
+            "changes": {"status": "success", "changes": [], "collectionDuration": 1.0},
+        }
+
+    def test_truncation_emits_warning_log(self):
+        """When context exceeds 50KB a WARNING log must be emitted before truncation."""
+        now = datetime.utcnow()
+        event = self._make_large_event(now)
+
+        with (
+            patch("correlation_engine.lambda_function.put_metric") as mock_put_metric,
+            patch("correlation_engine.lambda_function.put_workflow_duration_metric"),
+        ):
+            with self.capture_log_records() as records:
+                lambda_function.lambda_handler(event, None)
+
+        # At least one WARNING record should contain "truncating"
+        warning_messages = [
+            r.getMessage()
+            for r in records
+            if r.levelname == "WARNING"
+        ]
+        truncation_warnings = [
+            m for m in warning_messages
+            if "truncat" in m.lower() or "exceeds" in m.lower()
+        ]
+        assert len(truncation_warnings) > 0, (
+            "Expected at least one WARNING log about truncation, got: " + str(warning_messages)
+        )
+
+    def test_truncation_emits_context_truncated_metric(self):
+        """When context exceeds 50KB, put_metric must be called with 'ContextTruncated'."""
+        now = datetime.utcnow()
+        event = self._make_large_event(now)
+
+        with (
+            patch("correlation_engine.lambda_function.put_metric") as mock_put_metric,
+            patch("correlation_engine.lambda_function.put_workflow_duration_metric"),
+        ):
+            lambda_function.lambda_handler(event, None)
+
+        # Collect all metric names emitted
+        emitted_metric_names = [call.args[0] if call.args else call.kwargs.get("metric_name")
+                                 for call in mock_put_metric.call_args_list]
+        assert "ContextTruncated" in emitted_metric_names, (
+            f"Expected ContextTruncated metric; got: {emitted_metric_names}"
+        )
+
+    def test_no_truncation_metric_when_under_limit(self):
+        """When context is within the 50KB limit, ContextTruncated must NOT be emitted."""
+        now = datetime.utcnow()
+        small_event = {
+            "incident": {
+                "incidentId": "inc-small",
+                "resourceArn": "arn:aws:lambda:us-east-1:123456789012:function:fn",
+                "timestamp": now.isoformat() + "Z",
+                "alarmName": "Test",
+                "metricName": "Test",
+            },
+            "metrics": {"status": "success", "metrics": [], "collectionDuration": 1.0},
+            "logs": {
+                "status": "success",
+                "logs": [],
+                "totalMatches": 0,
+                "returned": 0,
+                "collectionDuration": 1.0,
+            },
+            "changes": {"status": "success", "changes": [], "collectionDuration": 1.0},
+        }
+
+        with (
+            patch("correlation_engine.lambda_function.put_metric") as mock_put_metric,
+            patch("correlation_engine.lambda_function.put_workflow_duration_metric"),
+        ):
+            lambda_function.lambda_handler(small_event, None)
+
+        emitted_metric_names = [call.args[0] if call.args else call.kwargs.get("metric_name")
+                                 for call in mock_put_metric.call_args_list]
+        assert "ContextTruncated" not in emitted_metric_names
+
+    @staticmethod
+    def capture_log_records():
+        """Context manager that captures log records emitted to the root logger."""
+        import logging
+
+        class _Capture(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.records = []
+
+            def emit(self, record):
+                self.records.append(record)
+
+            def __enter__(self):
+                logging.getLogger().addHandler(self)
+                return self.records
+
+            def __exit__(self, *args):
+                logging.getLogger().removeHandler(self)
+
+        return _Capture()

@@ -61,6 +61,16 @@ output "notification_service_role_name" {
   value       = aws_iam_role.notification_service.name
 }
 
+output "event_transformer_role_arn" {
+  description = "ARN of the Event Transformer Lambda IAM role"
+  value       = aws_iam_role.event_transformer.arn
+}
+
+output "event_transformer_role_name" {
+  description = "Name of the Event Transformer Lambda IAM role"
+  value       = aws_iam_role.event_transformer.name
+}
+
 # Step Functions Orchestrator Role
 output "orchestrator_role_arn" {
   description = "ARN of the Step Functions Orchestrator IAM role"
@@ -82,5 +92,6 @@ output "lambda_role_arns" {
     correlation_engine       = aws_iam_role.correlation_engine.arn
     llm_analyzer             = aws_iam_role.llm_analyzer.arn
     notification_service     = aws_iam_role.notification_service.arn
+    event_transformer        = aws_iam_role.event_transformer.arn
   }
 }

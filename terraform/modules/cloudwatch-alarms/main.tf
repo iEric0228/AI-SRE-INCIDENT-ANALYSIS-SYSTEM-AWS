@@ -35,14 +35,6 @@ resource "aws_sns_topic_policy" "ops_alerts" {
   })
 }
 
-# Email Subscription for Ops Team (optional)
-resource "aws_sns_topic_subscription" "ops_email" {
-  count     = var.ops_email != "" ? 1 : 0
-  topic_arn = aws_sns_topic.ops_alerts.arn
-  protocol  = "email"
-  endpoint  = var.ops_email
-}
-
 # Alarm 1: Step Functions Workflow Failures
 resource "aws_cloudwatch_metric_alarm" "workflow_failures" {
   alarm_name          = "${var.project_name}-workflow-failures"
@@ -343,6 +335,63 @@ resource "aws_cloudwatch_metric_alarm" "correlation_engine_errors" {
   )
 }
 
+# Alarm 11: DynamoDB Consumed Write Capacity Anomaly
+# Detects unexpected spikes in write activity that could indicate runaway costs
+resource "aws_cloudwatch_metric_alarm" "dynamodb_write_spike" {
+  alarm_name          = "${var.project_name}-dynamodb-write-spike"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "ConsumedWriteCapacityUnits"
+  namespace           = "AWS/DynamoDB"
+  period              = 300 # 5 minutes
+  statistic           = "Sum"
+  threshold           = 500 # ~100 writes/min sustained is abnormal for incident store
+  alarm_description   = "Alert when DynamoDB write activity spikes unexpectedly (potential runaway cost)"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    TableName = var.dynamodb_table_name
+  }
+
+  alarm_actions = [aws_sns_topic.ops_alerts.arn]
+
+  tags = merge(
+    var.tags,
+    {
+      Component = "Incident Store"
+      Severity  = "High"
+    }
+  )
+}
+
+# Alarm 12: DynamoDB Consumed Read Capacity Anomaly
+resource "aws_cloudwatch_metric_alarm" "dynamodb_read_spike" {
+  alarm_name          = "${var.project_name}-dynamodb-read-spike"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "ConsumedReadCapacityUnits"
+  namespace           = "AWS/DynamoDB"
+  period              = 300 # 5 minutes
+  statistic           = "Sum"
+  threshold           = 1000
+  alarm_description   = "Alert when DynamoDB read activity spikes unexpectedly (potential runaway cost)"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    TableName = var.dynamodb_table_name
+  }
+
+  alarm_actions = [aws_sns_topic.ops_alerts.arn]
+
+  tags = merge(
+    var.tags,
+    {
+      Component = "Incident Store"
+      Severity  = "High"
+    }
+  )
+}
+
 # CloudWatch Dashboard for System Health
 resource "aws_cloudwatch_dashboard" "system_health" {
   dashboard_name = "${var.project_name}-system-health"
@@ -429,6 +478,43 @@ resource "aws_cloudwatch_dashboard" "system_health" {
           dimensions = {
             TableName = [var.dynamodb_table_name]
           }
+        }
+      },
+      # Widget 6: LLM Response Parse Quality
+      # Tracks which fallback level the response parser used each invocation.
+      # Level 1 = JSON parsed cleanly (ideal), Level 2 = text extraction fallback,
+      # Level 3 = minimal report (Bedrock output was unparseable — investigate promptly).
+      # A rising Level 2/3 count signals prompt drift or Bedrock model changes.
+      {
+        type = "metric"
+        properties = {
+          metrics = [
+            ["${var.metric_namespace}", "LLMParseLevel", "Level", "1", { stat = "Sum", label = "Level 1 — JSON parse (ideal)" }],
+            [".", ".", "Level", "2", { stat = "Sum", label = "Level 2 — text extraction (fallback)" }],
+            [".", ".", "Level", "3", { stat = "Sum", label = "Level 3 — minimal report (degraded)" }]
+          ]
+          period = 300
+          region = var.aws_region
+          title  = "LLM Response Parse Quality"
+          view   = "timeSeries"
+        }
+      },
+      # Widget 7: Context Truncation
+      # Fires whenever the correlation engine had to truncate data to stay within
+      # the 50 KB LLM context limit. SampleCount = number of truncation events;
+      # Maximum = largest payload seen before trimming.
+      # Sustained truncations indicate high-cardinality incidents and may degrade
+      # analysis quality — consider tightening collector window parameters.
+      {
+        type = "metric"
+        properties = {
+          metrics = [
+            ["${var.metric_namespace}", "ContextTruncatedOriginalSizeBytes", { stat = "SampleCount", label = "Truncation Events (count)", id = "m1" }],
+            [".", ".", { stat = "Maximum", label = "Max Payload Before Trim (Bytes)", yAxis = "right", id = "m2" }]
+          ]
+          period = 300
+          region = var.aws_region
+          title  = "Context Truncation"
         }
       }
     ]

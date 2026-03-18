@@ -61,6 +61,16 @@ output "notification_service_name" {
   value       = aws_lambda_function.notification_service.function_name
 }
 
+output "event_transformer_arn" {
+  description = "ARN of the Event Transformer Lambda function"
+  value       = aws_lambda_function.event_transformer.arn
+}
+
+output "event_transformer_name" {
+  description = "Name of the Event Transformer Lambda function"
+  value       = aws_lambda_function.event_transformer.function_name
+}
+
 # All Lambda Function ARNs (for convenience)
 output "lambda_function_arns" {
   description = "Map of all Lambda function ARNs"
@@ -71,6 +81,7 @@ output "lambda_function_arns" {
     correlation_engine       = aws_lambda_function.correlation_engine.arn
     llm_analyzer             = aws_lambda_function.llm_analyzer.arn
     notification_service     = aws_lambda_function.notification_service.arn
+    event_transformer        = aws_lambda_function.event_transformer.arn
   }
 }
 
@@ -84,6 +95,7 @@ output "lambda_function_names" {
     correlation_engine       = aws_lambda_function.correlation_engine.function_name
     llm_analyzer             = aws_lambda_function.llm_analyzer.function_name
     notification_service     = aws_lambda_function.notification_service.function_name
+    event_transformer        = aws_lambda_function.event_transformer.function_name
   }
 }
 
@@ -97,5 +109,6 @@ output "log_group_arns" {
     correlation_engine       = aws_cloudwatch_log_group.correlation_engine.arn
     llm_analyzer             = aws_cloudwatch_log_group.llm_analyzer.arn
     notification_service     = aws_cloudwatch_log_group.notification_service.arn
+    event_transformer        = aws_cloudwatch_log_group.event_transformer.arn
   }
 }

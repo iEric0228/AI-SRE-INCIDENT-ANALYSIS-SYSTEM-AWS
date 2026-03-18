@@ -23,6 +23,7 @@ logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
 sns_client = boto3.client("sns")
+sfn_client = boto3.client("stepfunctions")
 
 
 def extract_resource_arn(alarm_event: Dict[str, Any]) -> str:
@@ -125,10 +126,24 @@ def transform_alarm_event(alarm_event: Dict[str, Any]) -> Dict[str, Any]:
         alarm_state = detail.get("state", {}).get("value", "ALARM")
         alarm_description = detail.get("alarmDescription", "")
 
-        # Extract metric information
+        # Extract metric information from alarm configuration
         configuration = detail.get("configuration", {})
-        metric_name = configuration.get("metricName", "Unknown")
-        namespace = configuration.get("namespace", "Unknown")
+        metric_name = "Unknown"
+        namespace = "Unknown"
+
+        # CloudWatch alarm config nests metric info under metrics[].metricStat.metric
+        metrics = configuration.get("metrics", [])
+        if metrics:
+            metric_stat = metrics[0].get("metricStat", {})
+            metric_info = metric_stat.get("metric", {})
+            metric_name = metric_info.get("name", metric_info.get("metricName", "Unknown"))
+            namespace = metric_info.get("namespace", "Unknown")
+
+        # Fallback to flat keys if present (some alarm formats)
+        if metric_name == "Unknown":
+            metric_name = configuration.get("metricName", "Unknown")
+        if namespace == "Unknown":
+            namespace = configuration.get("namespace", "Unknown")
 
         # Extract resource ARN
         resource_arn = extract_resource_arn(alarm_event)
@@ -264,6 +279,85 @@ def publish_to_sns(incident_event: Dict[str, Any]) -> str:
         raise
 
 
+def _unwrap_sns_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Unwrap an SNS-delivered event into the EventBridge format expected by
+    transform_alarm_event.
+
+    Supports two SNS message formats:
+    1. Native CloudWatch Alarm notification (AlarmName, NewStateValue, Trigger)
+    2. EventBridge input_transformer flattened format (alarmName, state, configuration)
+    """
+    record = event["Records"][0]["Sns"]
+    message = json.loads(record["Message"])
+
+    # Detect native CloudWatch alarm notification format
+    if "AlarmName" in message or "Trigger" in message:
+        trigger = message.get("Trigger", {})
+        # Convert native Dimensions list [{name, value}] to dict {name: value}
+        dimensions = {}
+        for dim in trigger.get("Dimensions", []):
+            dimensions[dim.get("name", "")] = dim.get("value", "")
+
+        return {
+            "source": "aws.cloudwatch",
+            "detail-type": "CloudWatch Alarm State Change",
+            "time": message.get("StateChangeTime", record.get("Timestamp", "")),
+            "region": message.get("Region", ""),
+            "account": message.get("AWSAccountId", ""),
+            "detail": {
+                "alarmName": message.get("AlarmName", ""),
+                "alarmArn": message.get("AlarmArn", ""),
+                "alarmDescription": message.get("AlarmDescription", ""),
+                "state": {
+                    "value": message.get("NewStateValue", "ALARM"),
+                    "reason": message.get("NewStateReason", ""),
+                },
+                "previousState": {
+                    "value": message.get("OldStateValue", ""),
+                },
+                "configuration": {
+                    "metrics": [
+                        {
+                            "metricStat": {
+                                "metric": {
+                                    "name": trigger.get("MetricName", ""),
+                                    "namespace": trigger.get("Namespace", ""),
+                                    "dimensions": dimensions,
+                                },
+                                "stat": trigger.get("Statistic", "Average"),
+                                "period": trigger.get("Period", 60),
+                            }
+                        }
+                    ]
+                },
+            },
+        }
+
+    # Fallback: EventBridge input_transformer format
+    return {
+        "source": "aws.cloudwatch",
+        "detail-type": "CloudWatch Alarm State Change",
+        "time": message.get("timestamp", record.get("Timestamp", "")),
+        "region": message.get("region", ""),
+        "account": message.get("account", ""),
+        "detail": {
+            "alarmName": message.get("alarmName", ""),
+            "alarmArn": message.get("alarmArn", ""),
+            "alarmDescription": message.get("alarmDescription", ""),
+            "state": {
+                "value": message.get("state", "ALARM"),
+                "reason": message.get("stateReason", ""),
+                "reasonData": message.get("stateReasonData", ""),
+            },
+            "previousState": {
+                "value": message.get("previousState", ""),
+            },
+            "configuration": message.get("configuration", {}),
+        },
+    }
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler for EventBridge event transformer.
@@ -272,14 +366,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     transforms them into normalized IncidentEvent objects, and publishes
     to SNS for orchestration by Step Functions.
 
+    Supports two delivery paths:
+    - Direct EventBridge invocation (event has 'source' and 'detail')
+    - SNS delivery (event has 'Records[].Sns.Message')
+
     Args:
-        event: EventBridge event containing CloudWatch Alarm state change
+        event: EventBridge event or SNS-wrapped event
         context: Lambda context object
 
     Returns:
         Response dictionary with status and incident details
     """
     try:
+        # Unwrap SNS envelope if present
+        if "Records" in event:
+            logger.info({"message": "Unwrapping SNS envelope"})
+            event = _unwrap_sns_event(event)
+
         logger.info(
             {
                 "message": "Event transformer invoked",
@@ -301,8 +404,26 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Transform alarm event to incident event
         incident_event = transform_alarm_event(event)
 
-        # Publish to SNS
-        message_id = publish_to_sns(incident_event)
+        # Start Step Functions workflow
+        state_machine_arn = os.environ.get("STATE_MACHINE_ARN", "")
+        if not state_machine_arn:
+            raise ValueError("STATE_MACHINE_ARN environment variable not set")
+
+        execution_name = f"incident-{incident_event['incidentId']}"
+        sfn_response = sfn_client.start_execution(
+            stateMachineArn=state_machine_arn,
+            name=execution_name,
+            input=json.dumps(incident_event),
+        )
+
+        logger.info(
+            {
+                "message": "Started Step Functions execution",
+                "incidentId": incident_event["incidentId"],
+                "executionArn": sfn_response["executionArn"],
+                "alarmName": incident_event["alarmName"],
+            }
+        )
 
         # Return success response
         return {
@@ -311,7 +432,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 {
                     "status": "success",
                     "incidentId": incident_event["incidentId"],
-                    "messageId": message_id,
+                    "executionArn": sfn_response["executionArn"],
                     "alarmName": incident_event["alarmName"],
                     "resourceArn": incident_event["resourceArn"],
                 }

@@ -79,6 +79,7 @@ locals {
     correlation_engine       = "${path.module}/../src/correlation_engine/deployment.zip"
     llm_analyzer             = "${path.module}/../src/llm_analyzer/deployment.zip"
     notification_service     = "${path.module}/../src/notification_service/deployment.zip"
+    event_transformer        = "${path.module}/../src/event_transformer/deployment.zip"
   }
 }
 
@@ -106,9 +107,10 @@ module "secrets" {
 module "iam" {
   source = "./modules/iam"
 
-  project_name   = var.project_name
-  aws_region     = local.region
-  aws_account_id = local.account_id
+  project_name        = var.project_name
+  aws_region          = local.region
+  aws_account_id      = local.account_id
+  dynamodb_table_name = var.dynamodb_table_name
 
   tags = local.common_tags
 }
@@ -158,6 +160,7 @@ module "lambda" {
   lambda_packages     = local.lambda_packages
   dynamodb_table_name = module.dynamodb.table_name
   sns_topic_arn       = module.eventbridge.sns_topic_arn
+  state_machine_arn   = "arn:aws:states:${local.region}:${local.account_id}:stateMachine:${var.project_name}-orchestrator"
   log_level           = var.lambda_log_level
 
   tags = local.common_tags
@@ -208,7 +211,6 @@ module "cloudwatch_alarms" {
   correlation_engine_function_name    = module.lambda.correlation_engine_name
   dynamodb_table_name                 = module.dynamodb.table_name
   kms_key_id                          = module.secrets.kms_key_id
-  ops_email                           = length(var.email_notification_endpoints) > 0 ? var.email_notification_endpoints[0] : ""
 
   tags = local.common_tags
 

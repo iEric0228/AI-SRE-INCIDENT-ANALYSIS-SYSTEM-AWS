@@ -232,9 +232,8 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
     InstanceId = aws_instance.test_instance.id
   }
 
-  # Note: In the full system, this would trigger SNS -> EventBridge -> Step Functions
-  # For now, we'll just create the alarm to test event capture
-  alarm_actions = []
+  alarm_actions = [var.sns_topic_arn]
+  ok_actions    = [var.sns_topic_arn]
 
   tags = {
     Name = "test-incident-high-cpu"

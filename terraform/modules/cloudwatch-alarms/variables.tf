@@ -50,10 +50,10 @@ variable "kms_key_id" {
   type        = string
 }
 
-variable "ops_email" {
-  description = "Email address for operational alerts (optional)"
+variable "metric_namespace" {
+  description = "CloudWatch metric namespace used by Lambda functions for custom put_metric calls (must match METRIC_NAMESPACE in src/shared/metrics.py)"
   type        = string
-  default     = ""
+  default     = "AI-SRE-IncidentAnalysis"
 }
 
 variable "tags" {
