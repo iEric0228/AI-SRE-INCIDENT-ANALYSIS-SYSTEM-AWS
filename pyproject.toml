@@ -77,5 +77,5 @@ show_missing = true
 skip_covered = false
 
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+requires = ["setuptools>=82.0.1", "wheel", "setuptools_scm>=6.2"]
 build-backend = "setuptools.build_meta"
