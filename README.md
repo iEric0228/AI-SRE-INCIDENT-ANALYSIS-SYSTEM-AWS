@@ -3,7 +3,7 @@
 > An event-driven AWS serverless pipeline that automatically detects infrastructure incidents, security threats, and service disruptions — then collects contextual data and generates AI-powered root-cause hypotheses using Amazon Bedrock.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11–3.14](https://img.shields.io/badge/python-3.11–3.14-blue.svg)](https://www.python.org/downloads/)
 [![Terraform](https://img.shields.io/badge/terraform-1.5+-purple.svg)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/AWS-Serverless-orange.svg)](https://aws.amazon.com/)
 
@@ -150,7 +150,9 @@ graph TB
 | **Config-Driven Mapping** | SSM Parameter Store for log group resolution | Runtime reconfiguration without redeployment |
 | **Circuit Breaker** | Bedrock invocation with failure tracking | Prevent cascading failures during outages |
 | **Advisory-Only AI** | LLM with explicit IAM denies | Safe recommendations without mutation risk |
-| **Graceful Degradation** | Catch blocks in Step Functions | Workflow continues with partial data |
+| **Graceful Degradation** | Catch blocks in Step Functions | Workflow continues with partial data (including correlation failures) |
+| **Input Sanitization** | Prompt injection mitigation + XSS prevention | Defense-in-depth for untrusted data |
+| **Secrets Caching** | In-memory cache with 5-min TTL | Reduced latency and Secrets Manager API costs |
 
 ## Key Features
 
@@ -501,6 +503,13 @@ enable_health_events    = true   # Enable AWS Health event ingestion
 # Observability
 enable_lambda_insights  = true   # Enable CloudWatch Lambda Insights for all functions
 
+# LLM configuration
+bedrock_model_id       = "anthropic.claude-3-haiku-20240307-v1:0"  # Bedrock model for analysis
+max_context_size_bytes = 51200   # Max context size sent to LLM (50 KB)
+
+# Operational
+log_retention_days = 7           # CloudWatch Logs retention (7 for dev, 30 for prod)
+
 # Log group mapping
 log_group_mapping_parameter_name = "/incident-analysis/log-group-mapping"
 ```
@@ -662,12 +671,13 @@ terraform force-unlock <lock-id>
 
 ### Development
 
-- **Language**: Python 3.11+
+- **Language**: Python 3.11–3.14 (timezone-aware datetime throughout)
 - **AWS SDK**: boto3
 - **Testing**: pytest, Hypothesis (property-based testing), moto (AWS mocking)
 - **CI/CD**: GitHub Actions with OIDC authentication
-- **Security**: CodeQL SAST, Dependabot automated updates
+- **Security**: CodeQL SAST, pip-audit dependency scanning, Dependabot automated updates
 - **HTTP Client**: requests (for Slack webhooks)
+- **Dependencies**: All pinned in `requirements.txt` (production) and `requirements-dev.txt` (development)
 
 ## Project Structure
 
@@ -741,15 +751,19 @@ terraform force-unlock <lock-id>
 
 ### Security Features
 
-- ✅ **Least-Privilege IAM**: Each Lambda has minimal required permissions
+- ✅ **Least-Privilege IAM**: Each Lambda has minimal required permissions with KMS and SSM scoped to specific resources
 - ✅ **LLM Restrictions**: Explicit deny for EC2, RDS, IAM, and mutating APIs
-- ✅ **Secrets Management**: All credentials in AWS Secrets Manager
+- ✅ **Prompt Injection Mitigation**: Input sanitization and untrusted-data preamble for LLM context
+- ✅ **XSS Prevention**: All dynamic content in HTML email templates escaped via `html.escape()`
+- ✅ **Webhook Validation**: Slack webhook URLs validated against `hooks.slack.com` domain
+- ✅ **Secrets Management**: All credentials in AWS Secrets Manager with in-memory caching (5-min TTL)
 - ✅ **No Long-Lived Credentials**: OIDC for CI/CD authentication
 - ✅ **Encryption at Rest**: KMS encryption for DynamoDB, SNS, SQS, and Secrets Manager
 - ✅ **Encryption in Transit**: TLS for all API calls
 - ✅ **Audit Logging**: CloudTrail enabled for all API calls
 - ✅ **CodeQL SAST**: Automated static analysis for security vulnerabilities on every PR
-- ✅ **Dependabot**: Automated dependency updates for Python packages and GitHub Actions
+- ✅ **Dependency Scanning**: `pip-audit` in CI pipeline + Dependabot automated updates
+- ✅ **Pinned Dependencies**: All production and dev dependencies version-pinned
 - ✅ **Lambda Concurrency Limits**: Reserved concurrency prevents runaway cost spikes
 
 ### IAM Policy Example
@@ -761,7 +775,7 @@ terraform force-unlock <lock-id>
     {
       "Effect": "Allow",
       "Action": ["bedrock:InvokeModel"],
-      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-v2"
+      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku*"
     },
     {
       "Effect": "Deny",
