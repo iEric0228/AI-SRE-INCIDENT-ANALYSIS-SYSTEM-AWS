@@ -10,7 +10,7 @@ Requirements: 11.1, 11.2, 11.6
 import json
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 
@@ -53,7 +53,7 @@ class StructuredLogger:
             Structured log dictionary
         """
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "level": level,
             "message": message,
             "correlationId": correlation_id,

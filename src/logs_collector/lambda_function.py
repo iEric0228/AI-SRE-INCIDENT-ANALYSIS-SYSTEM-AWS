@@ -51,7 +51,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Dictionary containing status, logs array, total_matches, returned count, and collection_duration
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     correlation_id = event.get("incidentId", event.get("incident", {}).get("incidentId", "unknown"))
 
     try:
@@ -138,7 +138,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logs_data = all_logs_data[:100]  # Limit total across all sources
 
         # Calculate collection duration
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         # Log warning if no logs found
         if not logs_data:
@@ -180,7 +180,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except ValueError as e:
         # Non-retryable validation error
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.error(
             json.dumps(
                 {
@@ -209,7 +209,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # ResourceNotFoundException: Log group doesn't exist (not an error - return empty)
         # Retryable errors: ThrottlingException, TooManyRequestsException
         # Other errors: Return error response
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
 
         logger.error(
@@ -266,7 +266,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except Exception as e:
         # Unexpected error
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.error(
             json.dumps(
                 {

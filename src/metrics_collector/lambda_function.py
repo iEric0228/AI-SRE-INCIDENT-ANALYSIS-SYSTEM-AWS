@@ -14,7 +14,7 @@ import os
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
@@ -125,7 +125,7 @@ def _log(level: str, message: str, correlation_id: str, context: Any = None, **k
         "correlationId": correlation_id,
         "functionName": function_name,
         "functionVersion": function_version,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
     }
     log_entry.update(kwargs)
 
@@ -144,7 +144,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
     Returns:
         Dictionary containing status, metrics array, and collection_duration
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     correlation_id = event.get("incidentId", event.get("incident", {}).get("incidentId", "unknown"))
 
     try:
@@ -227,7 +227,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
                     )
 
         # Calculate collection duration
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         # Log warning if no metrics found
         if not metrics_data:
@@ -262,7 +262,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
 
     except ValueError as e:
         # Non-retryable validation error
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         _log(
             "error",
             "Validation error",
@@ -287,7 +287,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
         # Retryable: ThrottlingException, ServiceException, TooManyRequestsException
         # Non-retryable: All others (return error response with empty data)
         # AWS SDK has built-in retry logic, but Step Functions adds another layer
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
 
         _log(
@@ -319,7 +319,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
 
     except Exception as e:
         # Unexpected error
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         _log(
             "error",
             "Unexpected error",

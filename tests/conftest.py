@@ -3,12 +3,22 @@ Pytest configuration and shared fixtures for AI-SRE Incident Analysis System tes
 """
 
 import os
+import sys
 
 # Set AWS_DEFAULT_REGION before any boto3 clients are created at module level.
 # Lambda source files initialize boto3 clients at import time, and without a
 # region configured (e.g., in CI environments with no ~/.aws/config), boto3
 # raises botocore.exceptions.NoRegionError during test collection.
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
+# Lambda functions use flat imports (e.g., `from models import ...`) because AWS
+# Lambda puts the handler's directory on sys.path. We replicate this for tests by
+# adding each Lambda package directory so that intra-package imports resolve.
+_src_dir = os.path.join(os.path.dirname(__file__), "..", "src")
+for _subdir in os.listdir(_src_dir):
+    _path = os.path.join(_src_dir, _subdir)
+    if os.path.isdir(_path) and _path not in sys.path:
+        sys.path.insert(0, _path)
 
 import json  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402

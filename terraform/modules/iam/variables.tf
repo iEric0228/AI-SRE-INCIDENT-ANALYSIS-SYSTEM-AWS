@@ -28,6 +28,11 @@ variable "enable_lambda_insights" {
   default     = true
 }
 
+variable "kms_key_arn" {
+  description = "ARN of the KMS key used for encrypting DynamoDB, SNS, and Secrets Manager"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to all IAM resources"
   type        = map(string)

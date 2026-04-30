@@ -157,11 +157,17 @@ resource "aws_sfn_state_machine" "incident_orchestrator" {
         Next       = "AnalyzeWithLLM"
       }
 
-      # Correlation failure handler
+      # Correlation failure handler - continue to notify with partial data
       CorrelationFailed = {
-        Type  = "Fail"
-        Error = "CorrelationEngineFailure"
-        Cause = "Failed to correlate collector data"
+        Type = "Pass"
+        Result = {
+          structuredContext = {
+            status = "correlation_failed"
+            error  = "Failed to correlate collector data"
+          }
+        }
+        ResultPath = "$.structuredContext"
+        Next       = "AnalyzeWithLLM"
       }
 
       # LLM Analyzer - generates root cause hypothesis
@@ -253,7 +259,7 @@ resource "aws_sfn_state_machine" "incident_orchestrator" {
                       "S.$" = "$.alarmName"
                     }
                     severity = {
-                      S = "high"
+                      "S.$" = "$.analysisReport.analysis.confidence"
                     }
                     structuredContext = {
                       "S.$" = "States.JsonToString($.structuredContext)"

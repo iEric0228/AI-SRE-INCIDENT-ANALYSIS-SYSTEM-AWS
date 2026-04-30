@@ -104,7 +104,7 @@ class TestLambdaHandler:
         # Mock Bedrock response
         bedrock_response = {"body": MagicMock()}
         bedrock_response["body"].read.return_value = json.dumps(
-            {"completion": json.dumps(sample_llm_response), "stop_reason": "stop_sequence"}
+            {"content": [{"text": json.dumps(sample_llm_response)}], "stop_reason": "end_turn"}
         ).encode("utf-8")
 
         mock_bedrock_client.invoke_model.return_value = bedrock_response
@@ -344,7 +344,10 @@ class TestBedrockInvocation:
         prompt = "Test prompt"
         bedrock_response = {"body": MagicMock()}
         bedrock_response["body"].read.return_value = json.dumps(
-            {"completion": json.dumps(sample_llm_response), "stop_reason": "stop_sequence"}
+            {
+                "content": [{"text": json.dumps(sample_llm_response)}],
+                "stop_reason": "stop_sequence",
+            }
         ).encode("utf-8")
 
         mock_bedrock_client.invoke_model.return_value = bedrock_response
@@ -363,11 +366,13 @@ class TestBedrockInvocation:
         assert call_args[1]["modelId"] == "anthropic.claude-v2"
         assert call_args[1]["contentType"] == "application/json"
 
-        # Verify request body structure
+        # Verify request body structure (Claude 3 Messages API format)
         request_body = json.loads(call_args[1]["body"])
-        assert "prompt" in request_body
+        assert request_body["anthropic_version"] == "bedrock-2023-05-31"
         assert request_body["temperature"] == 0.3
-        assert request_body["max_tokens_to_sample"] == 1000
+        assert request_body["max_tokens"] == 1000
+        assert request_body["messages"][0]["role"] == "user"
+        assert request_body["messages"][0]["content"] == prompt
 
     def test_throttling_exception_raised(self, mock_bedrock_client):
         """Test that throttling exceptions are raised for retry."""
@@ -418,7 +423,7 @@ class TestBedrockInvocation:
         prompt = "Test prompt"
         bedrock_response = {"body": MagicMock()}
         bedrock_response["body"].read.return_value = json.dumps(
-            {"completion": "Test response", "stop_reason": "max_tokens"}
+            {"content": [{"text": "Test response"}], "stop_reason": "max_tokens"}
         ).encode("utf-8")
 
         mock_bedrock_client.invoke_model.return_value = bedrock_response
@@ -438,7 +443,7 @@ class TestBedrockInvocation:
 
         request_body = json.loads(call_args[1]["body"])
         assert request_body["temperature"] == 0.5
-        assert request_body["max_tokens_to_sample"] == 500
+        assert request_body["max_tokens"] == 500
 
 
 class TestLLMResponseParsing:

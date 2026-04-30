@@ -36,7 +36,7 @@ resource "aws_lambda_function" "metrics_collector" {
 # CloudWatch Log Group for Metrics Collector
 resource "aws_cloudwatch_log_group" "metrics_collector" {
   name              = "/aws/lambda/${aws_lambda_function.metrics_collector.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }
@@ -71,7 +71,7 @@ resource "aws_lambda_function" "logs_collector" {
 # CloudWatch Log Group for Logs Collector
 resource "aws_cloudwatch_log_group" "logs_collector" {
   name              = "/aws/lambda/${aws_lambda_function.logs_collector.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }
@@ -105,7 +105,7 @@ resource "aws_lambda_function" "deploy_context_collector" {
 # CloudWatch Log Group for Deploy Context Collector
 resource "aws_cloudwatch_log_group" "deploy_context_collector" {
   name              = "/aws/lambda/${aws_lambda_function.deploy_context_collector.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }
@@ -129,7 +129,7 @@ resource "aws_lambda_function" "correlation_engine" {
     variables = {
       DYNAMODB_TABLE     = var.dynamodb_table_name
       LOG_LEVEL          = var.log_level
-      MAX_CONTEXT_SIZE   = "51200" # 50KB in bytes
+      MAX_CONTEXT_SIZE   = tostring(var.max_context_size_bytes)
       INCIDENT_TOPIC_ARN = var.sns_topic_arn
     }
   }
@@ -140,7 +140,7 @@ resource "aws_lambda_function" "correlation_engine" {
 # CloudWatch Log Group for Correlation Engine
 resource "aws_cloudwatch_log_group" "correlation_engine" {
   name              = "/aws/lambda/${aws_lambda_function.correlation_engine.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }
@@ -164,7 +164,7 @@ resource "aws_lambda_function" "llm_analyzer" {
     variables = {
       DYNAMODB_TABLE        = var.dynamodb_table_name
       LOG_LEVEL             = var.log_level
-      BEDROCK_MODEL_ID      = "anthropic.claude-3-haiku-20240307-v1:0"
+      BEDROCK_MODEL_ID      = var.bedrock_model_id
       PROMPT_TEMPLATE_PARAM = "/${var.project_name}/prompt-template"
       INCIDENT_TOPIC_ARN    = var.sns_topic_arn
     }
@@ -176,7 +176,7 @@ resource "aws_lambda_function" "llm_analyzer" {
 # CloudWatch Log Group for LLM Analyzer
 resource "aws_cloudwatch_log_group" "llm_analyzer" {
   name              = "/aws/lambda/${aws_lambda_function.llm_analyzer.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }
@@ -212,7 +212,7 @@ resource "aws_lambda_function" "notification_service" {
 # CloudWatch Log Group for Notification Service
 resource "aws_cloudwatch_log_group" "notification_service" {
   name              = "/aws/lambda/${aws_lambda_function.notification_service.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }
@@ -247,7 +247,7 @@ resource "aws_lambda_function" "event_transformer" {
 # CloudWatch Log Group for Event Transformer
 resource "aws_cloudwatch_log_group" "event_transformer" {
   name              = "/aws/lambda/${aws_lambda_function.event_transformer.function_name}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = var.tags
 }

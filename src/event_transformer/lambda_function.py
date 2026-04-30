@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 import boto3
@@ -176,7 +176,7 @@ def transform_alarm_event(alarm_event: Dict[str, Any]) -> Dict[str, Any]:
             (
                 datetime.now(datetime.UTC).isoformat()
                 if hasattr(datetime, "UTC")
-                else datetime.utcnow().isoformat()
+                else datetime.now(timezone.utc).isoformat()
             ),
         )
 
@@ -196,7 +196,7 @@ def transform_alarm_event(alarm_event: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             logger.warning(f"Error calculating TTL: {e}, using default")
             # Fallback: current time + 90 days
-            ttl = int(datetime.utcnow().timestamp()) + 7776000
+            ttl = int(datetime.now(timezone.utc).timestamp()) + 7776000
 
         # Create normalized incident event
         incident_event = {
@@ -344,7 +344,7 @@ def transform_guardduty_event(event: Dict[str, Any]) -> Dict[str, Any]:
             timestamp_dt = datetime.fromisoformat(timestamp_str)
         ttl = int(timestamp_dt.timestamp()) + 7776000
     except Exception:
-        ttl = int(datetime.utcnow().timestamp()) + 7776000
+        ttl = int(datetime.now(timezone.utc).timestamp()) + 7776000
 
     incident_event = {
         "incidentId": incident_id,
@@ -478,7 +478,7 @@ def transform_health_event(event: Dict[str, Any]) -> Dict[str, Any]:
             timestamp_dt = datetime.fromisoformat(timestamp_str)
         ttl = int(timestamp_dt.timestamp()) + 7776000
     except Exception:
-        ttl = int(datetime.utcnow().timestamp()) + 7776000
+        ttl = int(datetime.now(timezone.utc).timestamp()) + 7776000
 
     incident_event = {
         "incidentId": incident_id,

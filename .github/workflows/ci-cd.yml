@@ -61,6 +61,11 @@ jobs:
       - name: Run isort (import sorting)
         run: isort --check-only --diff src/ tests/
 
+      - name: Check for vulnerable dependencies
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
   terraform-validate:
     name: Terraform Validation
     runs-on: ubuntu-latest

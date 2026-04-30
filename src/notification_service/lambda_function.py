@@ -5,13 +5,14 @@ Sends incident analysis reports to Slack and email channels.
 Implements graceful degradation - continues with email if Slack fails.
 """
 
+import html as html_lib
 import json
 import logging
 import os
 
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 import boto3
@@ -37,6 +38,9 @@ sns_client = boto3.client("sns")
 
 # Environment variables
 SLACK_SECRET_NAME = os.environ.get("SLACK_SECRET_NAME", "incident-analysis/slack-webhook")
+
+# Secrets Manager cache (module-level, persists across warm invocations)
+_webhook_cache: Dict[str, Any] = {"url": None, "expires": 0.0}
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
 INCIDENT_STORE_BASE_URL = os.environ.get(
     "INCIDENT_STORE_BASE_URL", "https://console.aws.amazon.com/dynamodb/incident"
@@ -54,7 +58,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Notification output with delivery status
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
 
     # Extract correlation ID
     correlation_id = event.get("incidentId", "unknown")
@@ -89,10 +93,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Return partial success if at least one channel succeeds
 
         # Attempt Slack notification
-        slack_start = datetime.utcnow()
+        slack_start = datetime.now(timezone.utc)
         try:
             send_slack_notification(analysis_report)
-            slack_duration = (datetime.utcnow() - slack_start).total_seconds()
+            slack_duration = (datetime.now(timezone.utc) - slack_start).total_seconds()
             delivery_status.slack = DeliveryStatus.DELIVERED.value
             logger.info(
                 json.dumps(
@@ -103,7 +107,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             put_notification_delivery_metric("slack", True, slack_duration)
         except Exception as e:
             # Slack failure - log error but continue to email
-            slack_duration = (datetime.utcnow() - slack_start).total_seconds()
+            slack_duration = (datetime.now(timezone.utc) - slack_start).total_seconds()
             delivery_status.slack = DeliveryStatus.FAILED.value
             delivery_status.slack_error = str(e)
             logger.error(
@@ -121,10 +125,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Attempt email notification (independent of Slack result)
         # This ensures at least one notification channel is attempted
-        email_start = datetime.utcnow()
+        email_start = datetime.now(timezone.utc)
         try:
             send_email_notification(analysis_report)
-            email_duration = (datetime.utcnow() - email_start).total_seconds()
+            email_duration = (datetime.now(timezone.utc) - email_start).total_seconds()
             delivery_status.email = DeliveryStatus.DELIVERED.value
             logger.info(
                 json.dumps(
@@ -135,7 +139,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             put_notification_delivery_metric("email", True, email_duration)
         except Exception as e:
             # Email failure - log error
-            email_duration = (datetime.utcnow() - email_start).total_seconds()
+            email_duration = (datetime.now(timezone.utc) - email_start).total_seconds()
             delivery_status.email = DeliveryStatus.FAILED.value
             delivery_status.email_error = str(e)
             logger.error(
@@ -152,7 +156,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             put_notification_delivery_metric("email", False, email_duration)
 
         # Calculate duration
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
 
         # Determine overall status
@@ -204,7 +208,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         # Return failure response
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
 
         return {
@@ -237,6 +241,10 @@ def send_slack_notification(analysis_report: AnalysisReport) -> None:
 
     # Retrieve webhook URL from Secrets Manager (runtime retrieval for security)
     webhook_url = get_slack_webhook_url()
+
+    # Validate webhook URL domain to prevent data exfiltration via misconfigured secret
+    if not webhook_url.startswith("https://hooks.slack.com/"):
+        raise ValueError("Webhook URL does not match expected Slack domain (https://hooks.slack.com/)")
 
     # Format message
     message = format_slack_message(analysis_report)
@@ -278,8 +286,6 @@ def send_email_notification(analysis_report: AnalysisReport) -> None:
     # Format message
     subject = format_email_subject(analysis_report)
     plain_text = format_email_plain_text(analysis_report)
-    format_email_html(analysis_report)  # HTML version prepared for future use
-
     # Publish to SNS
     try:
         sns_client.publish(
@@ -302,7 +308,10 @@ def send_email_notification(analysis_report: AnalysisReport) -> None:
 
 def get_slack_webhook_url() -> str:
     """
-    Retrieve Slack webhook URL from Secrets Manager.
+    Retrieve Slack webhook URL from Secrets Manager with caching.
+
+    Caches the webhook URL for 5 minutes to reduce Secrets Manager API calls
+    and cost. Cache is module-level, persisting across warm Lambda invocations.
 
     Returns:
         Webhook URL
@@ -310,10 +319,17 @@ def get_slack_webhook_url() -> str:
     Raises:
         Exception: If secret retrieval fails
     """
+    now = time.monotonic()
+    if _webhook_cache["url"] and now < _webhook_cache["expires"]:
+        return str(_webhook_cache["url"])
+
     try:
         response = secrets_manager.get_secret_value(SecretId=SLACK_SECRET_NAME)
         secret = json.loads(response["SecretString"])
-        return str(secret["webhook_url"])
+        url = str(secret["webhook_url"])
+        _webhook_cache["url"] = url
+        _webhook_cache["expires"] = now + 300  # 5-minute TTL
+        return url
     except ClientError as e:
         raise Exception(f"Failed to retrieve Slack webhook URL: {e}")
     except (KeyError, json.JSONDecodeError) as e:
@@ -542,25 +558,25 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
             <div class="info-grid">
                 <div class="info-item">
                     <div class="info-label">Incident ID</div>
-                    <div>{analysis_report.incident_id}</div>
+                    <div>{html_lib.escape(analysis_report.incident_id)}</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Severity</div>
-                    <div>{severity}</div>
+                    <div>{html_lib.escape(severity)}</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Time</div>
-                    <div>{analysis_report.timestamp}</div>
+                    <div>{html_lib.escape(str(analysis_report.timestamp))}</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Confidence</div>
-                    <div>{confidence_value.capitalize()}</div>
+                    <div>{html_lib.escape(confidence_value.capitalize())}</div>
                 </div>
             </div>
 
             <div class="section">
                 <div class="section-title">Root Cause Hypothesis</div>
-                <p>{analysis.root_cause_hypothesis}</p>
+                <p>{html_lib.escape(analysis.root_cause_hypothesis)}</p>
             </div>
     """
 
@@ -571,7 +587,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 <ul>
         """
         for evidence in analysis.evidence:
-            html += f"<li>{evidence}</li>"
+            html += f"<li>{html_lib.escape(evidence)}</li>"
         html += """
                 </ul>
             </div>
@@ -584,7 +600,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 <ul>
         """
         for factor in analysis.contributing_factors:
-            html += f"<li>{factor}</li>"
+            html += f"<li>{html_lib.escape(factor)}</li>"
         html += """
                 </ul>
             </div>
@@ -597,7 +613,7 @@ def format_email_html(analysis_report: AnalysisReport) -> str:
                 <ol>
         """
         for action in analysis.recommended_actions:
-            html += f"<li>{action}</li>"
+            html += f"<li>{html_lib.escape(action)}</li>"
         html += """
                 </ol>
             </div>

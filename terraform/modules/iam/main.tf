@@ -81,7 +81,11 @@ data "aws_iam_policy_document" "logs_collector" {
       "logs:DescribeLogGroups",
       "logs:DescribeLogStreams"
     ]
-    resources = ["*"]
+    resources = [
+      "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/*",
+      "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/ecs/*",
+      "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:*"
+    ]
   }
 
   # CloudWatch Logs permissions for Lambda function logs
@@ -149,7 +153,7 @@ data "aws_iam_policy_document" "deploy_context_collector" {
       "ssm:GetParameter",
       "ssm:GetParameterHistory"
     ]
-    resources = ["arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/*"]
+    resources = ["arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/${var.project_name}/*"]
   }
 
   # CloudTrail read permissions
@@ -375,7 +379,7 @@ data "aws_iam_policy_document" "notification_service" {
       "kms:Decrypt",
       "kms:GenerateDataKey"
     ]
-    resources = ["*"]
+    resources = [var.kms_key_arn]
   }
 
   # CloudWatch Logs permissions for Lambda function logs
@@ -553,7 +557,7 @@ data "aws_iam_policy_document" "orchestrator" {
       "kms:Decrypt",
       "kms:GenerateDataKey"
     ]
-    resources = ["*"]
+    resources = [var.kms_key_arn]
   }
 
   # X-Ray tracing permissions

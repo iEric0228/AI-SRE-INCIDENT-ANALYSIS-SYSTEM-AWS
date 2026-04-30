@@ -600,7 +600,7 @@ def enforce_size_constraint(  # noqa: C901
     # Metrics are least critical since summary statistics are preserved
     if "timeSeries" in context.metrics and len(context.metrics["timeSeries"]) > 10:
         half_point = len(context.metrics["timeSeries"]) // 2
-        dropped = len(context.metrics["timeSeries"]) - (len(context.metrics["timeSeries"]) - half_point)
+        dropped = half_point
         logger.warning(
             json.dumps(
                 {

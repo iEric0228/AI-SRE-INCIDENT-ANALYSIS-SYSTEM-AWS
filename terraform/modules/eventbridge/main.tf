@@ -38,6 +38,11 @@ resource "aws_sns_topic_subscription" "step_functions" {
 
   # Enable raw message delivery for cleaner event structure
   raw_message_delivery = false
+
+  # Send failed Lambda invocations to DLQ
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.incident_dlq.arn
+  })
 }
 
 # Dead Letter Queue for Failed Events

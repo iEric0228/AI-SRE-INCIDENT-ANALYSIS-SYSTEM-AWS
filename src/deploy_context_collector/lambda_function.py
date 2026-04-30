@@ -13,7 +13,7 @@ import logging
 import os
 import sys
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
@@ -43,7 +43,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Dictionary containing status, changes array, and collection_duration
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     correlation_id = event.get("incidentId", event.get("incident", {}).get("incidentId", "unknown"))
 
     try:
@@ -106,7 +106,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         limited_changes = all_changes[:50]
 
         # Calculate collection duration
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         # Log warning if no changes found
         if not limited_changes:
@@ -144,7 +144,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except ValueError as e:
         # Non-retryable validation error
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.error(
             json.dumps(
                 {
@@ -171,7 +171,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # TrailNotFoundException: CloudTrail not configured (not an error - return empty)
         # Retryable errors: ThrottlingException, TooManyRequestsException
         # Other errors: Return error response
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
 
         logger.error(
@@ -203,7 +203,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except Exception as e:
         # Unexpected error
-        collection_duration = (datetime.utcnow() - start_time).total_seconds()
+        collection_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.error(
             json.dumps(
                 {

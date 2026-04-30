@@ -355,6 +355,12 @@ class TestEmailNotification:
 class TestSecretsRetrieval:
     """Tests for secrets retrieval from Secrets Manager."""
 
+    @pytest.fixture(autouse=True)
+    def reset_webhook_cache(self):
+        """Reset the webhook URL cache before each test."""
+        lambda_function._webhook_cache["url"] = None
+        lambda_function._webhook_cache["expires"] = 0.0
+
     def test_successful_secret_retrieval(self, mock_secrets_manager):
         """Test successful retrieval of Slack webhook URL."""
         # Arrange

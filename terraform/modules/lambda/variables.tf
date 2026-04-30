@@ -55,7 +55,7 @@ variable "state_machine_arn" {
 variable "lambda_concurrency_limit" {
   description = "Maximum concurrent executions per Lambda function (prevents runaway costs)"
   type        = number
-  default     = 10
+  default     = 100
 }
 
 variable "log_level" {
@@ -80,6 +80,24 @@ variable "log_group_mapping_parameter_name" {
   description = "SSM parameter name for custom log group mappings"
   type        = string
   default     = "/ai-sre-incident-analysis/log-group-mappings"
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch Logs retention in days for Lambda function logs (7 for dev, 30 for prod)"
+  type        = number
+  default     = 7
+}
+
+variable "bedrock_model_id" {
+  description = "Amazon Bedrock model ID for LLM analysis"
+  type        = string
+  default     = "anthropic.claude-3-haiku-20240307-v1:0"
+}
+
+variable "max_context_size_bytes" {
+  description = "Maximum context size in bytes for LLM input"
+  type        = number
+  default     = 51200
 }
 
 variable "tags" {

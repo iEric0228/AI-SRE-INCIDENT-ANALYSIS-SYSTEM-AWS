@@ -12,7 +12,7 @@ import json
 # Import the lambda function
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -349,7 +349,7 @@ class TestEventTransformation:
 
         # TTL should be approximately current time + 90 days
         # Allow 5 second tolerance for test execution time
-        current_unix = int(datetime.utcnow().timestamp())
+        current_unix = int(datetime.now(timezone.utc).timestamp())
         expected_ttl = current_unix + 7776000
 
         assert abs(result["ttl"] - expected_ttl) < 5
@@ -423,11 +423,18 @@ class TestSNSPublishing:
 class TestLambdaHandler:
     """Test Lambda handler integration."""
 
-    @patch.dict(os.environ, {"SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic"})
+    @patch.dict(os.environ, {
+        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+    })
+    @patch("event_transformer.lambda_function.sfn_client")
     @patch("event_transformer.lambda_function.sns_client")
-    def test_handler_success(self, mock_sns):
+    def test_handler_success(self, mock_sns, mock_sfn):
         """Test successful end-to-end event processing."""
         mock_sns.publish.return_value = {"MessageId": "msg-123"}
+        mock_sfn.start_execution.return_value = {
+            "executionArn": "arn:aws:states:us-east-1:123456789012:execution:test-sm:incident-123",
+        }
 
         event = {
             "version": "0",
@@ -464,7 +471,7 @@ class TestLambdaHandler:
         body = json.loads(response["body"])
         assert body["status"] == "success"
         assert "incidentId" in body
-        assert body["messageId"] == "msg-123"
+        assert "executionArn" in body
         assert body["alarmName"] == "HighCPUAlarm"
         assert (
             body["resourceArn"] == "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
@@ -485,12 +492,15 @@ class TestLambdaHandler:
         assert body["status"] == "failed"
         assert body["errorType"] == "ValidationException"
 
-    @patch.dict(os.environ, {"SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic"})
-    @patch("event_transformer.lambda_function.sns_client")
-    def test_handler_retryable_error(self, mock_sns):
+    @patch.dict(os.environ, {
+        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+    })
+    @patch("event_transformer.lambda_function.sfn_client")
+    def test_handler_retryable_error(self, mock_sfn):
         """Test that retryable errors are raised for Lambda retry."""
-        mock_sns.publish.side_effect = ClientError(
-            {"Error": {"Code": "Throttling", "Message": "Rate exceeded"}}, "Publish"
+        mock_sfn.start_execution.side_effect = ClientError(
+            {"Error": {"Code": "Throttling", "Message": "Rate exceeded"}}, "StartExecution"
         )
 
         event = {
@@ -513,12 +523,15 @@ class TestLambdaHandler:
 
         assert exc_info.value.response["Error"]["Code"] == "Throttling"
 
-    @patch.dict(os.environ, {"SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic"})
-    @patch("event_transformer.lambda_function.sns_client")
-    def test_handler_non_retryable_error(self, mock_sns):
+    @patch.dict(os.environ, {
+        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+    })
+    @patch("event_transformer.lambda_function.sfn_client")
+    def test_handler_non_retryable_error(self, mock_sfn):
         """Test that non-retryable errors return error response."""
-        mock_sns.publish.side_effect = ClientError(
-            {"Error": {"Code": "InvalidParameter", "Message": "Invalid topic"}}, "Publish"
+        mock_sfn.start_execution.side_effect = ClientError(
+            {"Error": {"Code": "InvalidParameter", "Message": "Invalid state machine"}}, "StartExecution"
         )
 
         event = {
@@ -544,11 +557,16 @@ class TestLambdaHandler:
         assert body["status"] == "failed"
         assert body["errorType"] == "InvalidParameter"
 
-    @patch.dict(os.environ, {"SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic"})
-    @patch("event_transformer.lambda_function.sns_client")
-    def test_handler_unexpected_event_source(self, mock_sns):
+    @patch.dict(os.environ, {
+        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+    })
+    @patch("event_transformer.lambda_function.sfn_client")
+    def test_handler_unexpected_event_source(self, mock_sfn):
         """Test handler logs warning for unexpected event source."""
-        mock_sns.publish.return_value = {"MessageId": "msg-123"}
+        mock_sfn.start_execution.return_value = {
+            "executionArn": "arn:aws:states:us-east-1:123456789012:execution:test-sm:incident-123",
+        }
 
         event = {
             "source": "aws.ec2",  # Unexpected source

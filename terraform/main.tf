@@ -112,8 +112,11 @@ module "iam" {
   aws_account_id         = local.account_id
   dynamodb_table_name    = var.dynamodb_table_name
   enable_lambda_insights = var.enable_lambda_insights
+  kms_key_arn            = module.secrets.kms_key_arn
 
   tags = local.common_tags
+
+  depends_on = [module.secrets]
 }
 
 # ============================================================================
@@ -167,6 +170,7 @@ module "lambda" {
   log_level                        = var.lambda_log_level
   enable_lambda_insights           = var.enable_lambda_insights
   log_group_mapping_parameter_name = var.log_group_mapping_parameter_name
+  bedrock_model_id                 = var.bedrock_model_id
 
   tags = local.common_tags
 

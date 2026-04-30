@@ -8,7 +8,7 @@ Requirements: 11.3 - Custom CloudWatch metrics for observability
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import boto3
@@ -45,7 +45,7 @@ def put_metric(
             "MetricName": metric_name,
             "Value": value,
             "Unit": unit,
-            "Timestamp": timestamp or datetime.utcnow(),
+            "Timestamp": timestamp or datetime.now(timezone.utc),
         }
 
         if dimensions:
