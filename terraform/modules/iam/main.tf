@@ -450,9 +450,9 @@ data "aws_iam_policy_document" "event_transformer" {
   }
 
   statement {
-    sid     = "CloudWatchMetricsWrite"
-    effect  = "Allow"
-    actions = ["cloudwatch:PutMetricData"]
+    sid       = "CloudWatchMetricsWrite"
+    effect    = "Allow"
+    actions   = ["cloudwatch:PutMetricData"]
     resources = ["*"]
     condition {
       test     = "StringEquals"
