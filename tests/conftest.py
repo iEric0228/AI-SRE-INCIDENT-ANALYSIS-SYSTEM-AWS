@@ -5,10 +5,17 @@ Pytest configuration and shared fixtures for AI-SRE Incident Analysis System tes
 import os
 import sys
 
-# Set AWS_DEFAULT_REGION before any boto3 clients are created at module level.
-# Lambda source files initialize boto3 clients at import time, and without a
-# region configured (e.g., in CI environments with no ~/.aws/config), boto3
-# raises botocore.exceptions.NoRegionError during test collection.
+# Force dummy AWS credentials and a region BEFORE any boto3 client is created at
+# module import time. This keeps the test suite hermetic:
+#   * moto can only intercept boto3 calls when *some* credentials are present;
+#     with none, boto3 raises NoCredentialsError and mocked tests fail.
+#   * forcing dummy values (not setdefault) prevents real credentials from the
+#     environment or ~/.aws leaking in, which would let incompletely-mocked
+#     tests pass locally yet fail in credential-less CI.
+os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+os.environ["AWS_SESSION_TOKEN"] = "testing"
+os.environ["AWS_SECURITY_TOKEN"] = "testing"
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 # Lambda functions use flat imports (e.g., `from models import ...`) because AWS
