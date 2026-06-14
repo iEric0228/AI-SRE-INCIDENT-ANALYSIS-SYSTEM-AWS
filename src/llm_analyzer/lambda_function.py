@@ -182,7 +182,7 @@ def create_fallback_report(incident_id: str, error_message: str) -> Dict[str, An
     """
     return {
         "incidentId": incident_id,
-        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "analysis": {
             "rootCauseHypothesis": "Analysis unavailable due to LLM service error",
             "confidence": "none",
@@ -318,7 +318,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Construct analysis report
         analysis_report = {
             "incidentId": correlation_id,
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "analysis": analysis,
             "metadata": metadata,
         }
