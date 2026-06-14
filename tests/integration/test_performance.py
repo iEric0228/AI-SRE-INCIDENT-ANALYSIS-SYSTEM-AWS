@@ -282,7 +282,9 @@ class TestPerformance:
             mock_bedrock.invoke_model = slow_invoke_model
 
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "Test prompt: {context}"}}
+            mock_ssm.get_parameter.return_value = {
+                "Parameter": {"Value": "Test prompt: {context}", "Version": 1}
+            }
 
             def client_factory(service, **kwargs):
                 if service == "bedrock-runtime":
@@ -437,7 +439,9 @@ class TestPerformance:
             }
 
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "Test prompt"}}
+            mock_ssm.get_parameter.return_value = {
+                "Parameter": {"Value": "Test prompt", "Version": 1}
+            }
 
             def client_factory(service, **kwargs):
                 if service == "bedrock-runtime":

@@ -321,7 +321,9 @@ class TestPartialFailureScenarios:
             )
 
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "Test prompt"}}
+            mock_ssm.get_parameter.return_value = {
+                "Parameter": {"Value": "Test prompt", "Version": 1}
+            }
 
             def client_factory(service, **kwargs):
                 if service == "bedrock-runtime":
