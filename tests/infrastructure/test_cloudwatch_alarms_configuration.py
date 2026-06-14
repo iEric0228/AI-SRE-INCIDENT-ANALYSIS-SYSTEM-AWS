@@ -81,11 +81,6 @@ class TestSNSTopicConfiguration:
         assert "cloudwatch.amazonaws.com" in cloudwatch_alarms_main_tf
         assert "SNS:Publish" in cloudwatch_alarms_main_tf
 
-    def test_email_subscription_optional(self, cloudwatch_alarms_main_tf):
-        """Test that email subscription is optional based on variable."""
-        assert 'resource "aws_sns_topic_subscription" "ops_email"' in cloudwatch_alarms_main_tf
-        assert 'count     = var.ops_email != "" ? 1 : 0' in cloudwatch_alarms_main_tf
-
 
 class TestWorkflowAlarms:
     """Test Step Functions workflow monitoring alarms."""
@@ -311,11 +306,6 @@ class TestModuleVariables:
             assert (
                 f'variable "{var_name}"' in cloudwatch_alarms_variables_tf
             ), f"Required variable {var_name} not defined"
-
-    def test_ops_email_variable_optional(self, cloudwatch_alarms_variables_tf):
-        """Test that ops_email variable is optional with default empty string."""
-        assert 'variable "ops_email"' in cloudwatch_alarms_variables_tf
-        assert 'default     = ""' in cloudwatch_alarms_variables_tf
 
     def test_tags_variable_optional(self, cloudwatch_alarms_variables_tf):
         """Test that tags variable is optional with default empty map."""

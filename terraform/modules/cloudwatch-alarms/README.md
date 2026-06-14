@@ -197,7 +197,6 @@ module "cloudwatch_alarms" {
   correlation_engine_function_name     = module.lambda_correlation.function_name
   dynamodb_table_name                  = module.dynamodb.table_name
   kms_key_id                           = aws_kms_key.incident_store.id
-  ops_email                            = "ops-team@example.com"
 
   tags = {
     Environment = "production"
@@ -220,7 +219,6 @@ module "cloudwatch_alarms" {
 | correlation_engine_function_name | Name of the correlation engine Lambda function | string | yes |
 | dynamodb_table_name | Name of the DynamoDB incident store table | string | yes |
 | kms_key_id | KMS key ID for encrypting SNS topic | string | yes |
-| ops_email | Email address for operational alerts (optional) | string | no |
 | tags | Tags to apply to all resources | map(string) | no |
 
 ## Outputs
