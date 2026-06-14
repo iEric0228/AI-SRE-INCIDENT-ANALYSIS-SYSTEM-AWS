@@ -7,6 +7,7 @@ incident ID, resource, severity, hypothesis, actions, and link.
 Validates Requirements 8.1, 8.4, 8.5
 """
 
+import html as html_lib
 import json
 import os
 import sys
@@ -331,13 +332,15 @@ def test_property_21_email_html_completeness(analysis_report):
     expected_severity = severity_mapping.get(confidence_value, "Low")
     assert expected_severity in html, f"Email HTML should contain severity '{expected_severity}'"
 
-    # 3. Verify root cause hypothesis is present
+    # 3. Verify root cause hypothesis is present (HTML-escaped by format_email_html)
     hypothesis = analysis_report.analysis.root_cause_hypothesis
-    assert hypothesis in html, "Email HTML should contain root cause hypothesis"
+    assert html_lib.escape(hypothesis) in html, "Email HTML should contain root cause hypothesis"
 
-    # 4. Verify recommended actions are present
+    # 4. Verify recommended actions are present (HTML-escaped by format_email_html)
     for action in analysis_report.analysis.recommended_actions:
-        assert action in html, f"Email HTML should contain recommended action '{action}'"
+        assert (
+            html_lib.escape(action) in html
+        ), f"Email HTML should contain recommended action '{action}'"
 
     # 5. Verify link to incident details is present
     assert (
@@ -418,7 +421,7 @@ def test_all_notification_formats_contain_same_core_info(analysis_report):
     # Verify hypothesis is in all formats (except subject which is too short)
     assert hypothesis_escaped in slack_str, "Hypothesis should be in Slack message"
     assert hypothesis in email_plain, "Hypothesis should be in email plain text"
-    assert hypothesis in email_html, "Hypothesis should be in email HTML"
+    assert html_lib.escape(hypothesis) in email_html, "Hypothesis should be in email HTML"
 
 
 @given(analysis_report_strategy())

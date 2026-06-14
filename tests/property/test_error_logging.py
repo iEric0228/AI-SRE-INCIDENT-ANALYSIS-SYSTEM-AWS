@@ -154,21 +154,28 @@ def correlation_engine_event_strategy(draw):
 
 @composite
 def llm_analyzer_event_strategy(draw):
-    """Generate valid LLM analyzer events."""
+    """Generate valid LLM analyzer events.
+
+    Mirrors the correlation engine's output contract: the structured context
+    (including incidentId) is nested under the ``structuredContext`` key, which
+    is what ``llm_handler`` reads.
+    """
     incident_id = draw(incident_id_strategy())
     return {
-        "incidentId": incident_id,
-        "timestamp": draw(timestamp_strategy()),
-        "resource": {
-            "arn": draw(resource_arn_strategy()),
-            "type": "lambda",
-            "name": "test-function",
+        "structuredContext": {
+            "incidentId": incident_id,
+            "timestamp": draw(timestamp_strategy()),
+            "resource": {
+                "arn": draw(resource_arn_strategy()),
+                "type": "lambda",
+                "name": "test-function",
+            },
+            "alarm": {"name": "HighErrorRate", "metric": "Errors", "threshold": 10},
+            "metrics": {"summary": {}, "timeSeries": []},
+            "logs": {"errorCount": 0, "topErrors": [], "entries": []},
+            "changes": {"recentDeployments": 0, "entries": []},
+            "completeness": {"metrics": True, "logs": True, "changes": True},
         },
-        "alarm": {"name": "HighErrorRate", "metric": "Errors", "threshold": 10},
-        "metrics": {"summary": {}, "timeSeries": []},
-        "logs": {"errorCount": 0, "topErrors": [], "entries": []},
-        "changes": {"recentDeployments": 0, "entries": []},
-        "completeness": {"metrics": True, "logs": True, "changes": True},
     }
 
 
@@ -647,7 +654,7 @@ def test_error_logging_llm_analyzer(event):
         # But if there are error logs, they must have proper structure
         if len(error_logs) > 0:
             for error_log in error_logs:
-                validate_error_log_structure(error_log, event["incidentId"])
+                validate_error_log_structure(error_log, event["structuredContext"]["incidentId"])
 
 
 @given(notification_service_event_strategy())

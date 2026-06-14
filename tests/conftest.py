@@ -28,9 +28,12 @@ from unittest.mock import MagicMock  # noqa: E402
 import pytest  # noqa: E402
 from hypothesis import Verbosity, settings  # noqa: E402
 
-# Hypothesis profiles for property-based testing
-settings.register_profile("dev", max_examples=20, verbosity=Verbosity.normal)
-settings.register_profile("ci", max_examples=100, verbosity=Verbosity.verbose)
+# Hypothesis profiles for property-based testing.
+# deadline=None disables per-example timing limits: on shared CI runners the
+# default 200ms deadline produces flaky DeadlineExceeded failures unrelated to
+# correctness. The properties themselves remain enforced.
+settings.register_profile("dev", max_examples=20, verbosity=Verbosity.normal, deadline=None)
+settings.register_profile("ci", max_examples=100, verbosity=Verbosity.verbose, deadline=None)
 settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
 
 
