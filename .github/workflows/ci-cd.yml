@@ -381,7 +381,10 @@ jobs:
   deploy-dev:
     name: Deploy to Dev
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Auto-deploys on push to main; also runnable manually via "Run workflow" with environment=dev.
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     needs: [python-lint, terraform-validate, unit-tests, property-tests, infrastructure-tests]
     environment:
       name: dev
@@ -449,6 +452,7 @@ jobs:
 
       - name: Create Prompt Template
         run: |
+          pip install boto3 --quiet
           python scripts/create_prompt_template.py
 
   # ============================================================================
@@ -524,6 +528,7 @@ jobs:
 
       - name: Create Prompt Template
         run: |
+          pip install boto3 --quiet
           python scripts/create_prompt_template.py
 
   # ============================================================================
@@ -604,6 +609,7 @@ jobs:
 
       - name: Create Prompt Template
         run: |
+          pip install boto3 --quiet
           python scripts/create_prompt_template.py
 
       - name: Notify Deployment
