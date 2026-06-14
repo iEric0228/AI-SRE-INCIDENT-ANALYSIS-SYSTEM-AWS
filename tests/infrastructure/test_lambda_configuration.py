@@ -11,6 +11,7 @@ These tests validate that Lambda functions are configured with:
 Validates Requirements: 17.2, 17.3, 17.5
 """
 
+import re
 from pathlib import Path
 
 
@@ -32,11 +33,11 @@ class TestLambdaArchitecture:
 
         # Count Lambda function resources
         function_count = main_tf.count('resource "aws_lambda_function"')
-        assert function_count == 6, f"Expected 6 Lambda functions, found {function_count}"
+        assert function_count == 7, f"Expected 7 Lambda functions, found {function_count}"
 
-        # Verify all functions use ARM64
-        arm64_count = main_tf.count('architectures = ["arm64"]')
-        assert arm64_count == 6, f"Expected 6 ARM64 configurations, found {arm64_count}"
+        # Verify all functions use ARM64 (terraform fmt aligns '=', so match flexibly)
+        arm64_count = len(re.findall(r'architectures\s*=\s*\["arm64"\]', main_tf))
+        assert arm64_count == 7, f"Expected 7 ARM64 configurations, found {arm64_count}"
 
         # Verify no x86_64 architecture
         assert "x86_64" not in main_tf
@@ -51,7 +52,7 @@ class TestLambdaMemoryConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         metrics_section = self._extract_function_section(main_tf, "metrics_collector")
-        assert "memory_size   = 512" in metrics_section
+        assert re.search(r"memory_size\s*=\s*512", metrics_section)
 
     def test_logs_collector_memory(self):
         """Logs Collector should have 512MB memory."""
@@ -59,7 +60,7 @@ class TestLambdaMemoryConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         logs_section = self._extract_function_section(main_tf, "logs_collector")
-        assert "memory_size   = 512" in logs_section
+        assert re.search(r"memory_size\s*=\s*512", logs_section)
 
     def test_deploy_context_collector_memory(self):
         """Deploy Context Collector should have 512MB memory."""
@@ -67,7 +68,7 @@ class TestLambdaMemoryConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         deploy_section = self._extract_function_section(main_tf, "deploy_context_collector")
-        assert "memory_size   = 512" in deploy_section
+        assert re.search(r"memory_size\s*=\s*512", deploy_section)
 
     def test_correlation_engine_memory(self):
         """Correlation Engine should have 256MB memory."""
@@ -75,7 +76,7 @@ class TestLambdaMemoryConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         correlation_section = self._extract_function_section(main_tf, "correlation_engine")
-        assert "memory_size   = 256" in correlation_section
+        assert re.search(r"memory_size\s*=\s*256", correlation_section)
 
     def test_llm_analyzer_memory(self):
         """LLM Analyzer should have 1024MB memory."""
@@ -83,7 +84,7 @@ class TestLambdaMemoryConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         llm_section = self._extract_function_section(main_tf, "llm_analyzer")
-        assert "memory_size   = 1024" in llm_section
+        assert re.search(r"memory_size\s*=\s*1024", llm_section)
 
     def test_notification_service_memory(self):
         """Notification Service should have 256MB memory."""
@@ -91,7 +92,7 @@ class TestLambdaMemoryConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         notification_section = self._extract_function_section(main_tf, "notification_service")
-        assert "memory_size   = 256" in notification_section
+        assert re.search(r"memory_size\s*=\s*256", notification_section)
 
     def _extract_function_section(self, content, function_name):
         """Extract a specific Lambda function section from Terraform HCL."""
@@ -126,7 +127,7 @@ class TestLambdaTimeoutConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         metrics_section = self._extract_function_section(main_tf, "metrics_collector")
-        assert "timeout       = 20" in metrics_section
+        assert re.search(r"timeout\s*=\s*20", metrics_section)
 
     def test_logs_collector_timeout(self):
         """Logs Collector should have 20s timeout."""
@@ -134,7 +135,7 @@ class TestLambdaTimeoutConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         logs_section = self._extract_function_section(main_tf, "logs_collector")
-        assert "timeout       = 20" in logs_section
+        assert re.search(r"timeout\s*=\s*20", logs_section)
 
     def test_deploy_context_collector_timeout(self):
         """Deploy Context Collector should have 20s timeout."""
@@ -142,7 +143,7 @@ class TestLambdaTimeoutConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         deploy_section = self._extract_function_section(main_tf, "deploy_context_collector")
-        assert "timeout       = 20" in deploy_section
+        assert re.search(r"timeout\s*=\s*20", deploy_section)
 
     def test_correlation_engine_timeout(self):
         """Correlation Engine should have 10s timeout."""
@@ -150,7 +151,7 @@ class TestLambdaTimeoutConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         correlation_section = self._extract_function_section(main_tf, "correlation_engine")
-        assert "timeout       = 10" in correlation_section
+        assert re.search(r"timeout\s*=\s*10", correlation_section)
 
     def test_llm_analyzer_timeout(self):
         """LLM Analyzer should have 40s timeout."""
@@ -158,7 +159,7 @@ class TestLambdaTimeoutConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         llm_section = self._extract_function_section(main_tf, "llm_analyzer")
-        assert "timeout       = 40" in llm_section
+        assert re.search(r"timeout\s*=\s*40", llm_section)
 
     def test_notification_service_timeout(self):
         """Notification Service should have 15s timeout."""
@@ -166,7 +167,7 @@ class TestLambdaTimeoutConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         notification_section = self._extract_function_section(main_tf, "notification_service")
-        assert "timeout       = 15" in notification_section
+        assert re.search(r"timeout\s*=\s*15", notification_section)
 
     def _extract_function_section(self, content, function_name):
         """Extract a specific Lambda function section from Terraform HCL."""
@@ -203,11 +204,11 @@ class TestCloudWatchLogsRetention:
 
         # Count CloudWatch Log Group resources
         log_group_count = main_tf.count('resource "aws_cloudwatch_log_group"')
-        assert log_group_count == 6, f"Expected 6 log groups, found {log_group_count}"
+        assert log_group_count == 7, f"Expected 7 log groups, found {log_group_count}"
 
-        # Verify all log groups have 7-day retention
-        retention_count = main_tf.count("retention_in_days = 7")
-        assert retention_count == 6, f"Expected 6 retention configurations, found {retention_count}"
+        # Retention is configured via var.log_retention_days (default 7) for each group
+        retention_count = main_tf.count("retention_in_days = var.log_retention_days")
+        assert retention_count == 7, f"Expected 7 retention configurations, found {retention_count}"
 
 
 class TestLambdaEnvironmentVariables:
@@ -223,7 +224,7 @@ class TestLambdaEnvironmentVariables:
 
         # Each function should have environment block
         env_block_count = main_tf.count("environment {")
-        assert env_block_count == 6, f"Expected 6 environment blocks, found {env_block_count}"
+        assert env_block_count == 7, f"Expected 7 environment blocks, found {env_block_count}"
 
         # Common variables should appear in all functions
         assert main_tf.count("DYNAMODB_TABLE") >= 6
@@ -237,7 +238,8 @@ class TestLambdaEnvironmentVariables:
         llm_section = self._extract_function_section(main_tf, "llm_analyzer")
         assert "BEDROCK_MODEL_ID" in llm_section
         assert "PROMPT_TEMPLATE_PARAM" in llm_section
-        assert "anthropic.claude-v2" in llm_section
+        # Model id is now configurable via the bedrock_model_id variable
+        assert "var.bedrock_model_id" in llm_section
 
     def test_notification_service_has_notification_configuration(self):
         """Notification Service should have notification-specific environment variables."""
@@ -256,7 +258,8 @@ class TestLambdaEnvironmentVariables:
 
         correlation_section = self._extract_function_section(main_tf, "correlation_engine")
         assert "MAX_CONTEXT_SIZE" in correlation_section
-        assert "51200" in correlation_section  # 50KB in bytes
+        # Size is now configurable via the max_context_size_bytes variable (default 51200)
+        assert "var.max_context_size_bytes" in correlation_section
 
     def _extract_function_section(self, content, function_name):
         """Extract a specific Lambda function section from Terraform HCL."""
@@ -290,8 +293,8 @@ class TestLambdaRuntimeConfiguration:
         main_tf = (module_path / "main.tf").read_text()
 
         # Count Python 3.11 runtime configurations
-        python311_count = main_tf.count('runtime       = "python3.11"')
-        assert python311_count == 6, f"Expected 6 Python 3.11 runtimes, found {python311_count}"
+        python311_count = len(re.findall(r'runtime\s*=\s*"python3\.11"', main_tf))
+        assert python311_count == 7, f"Expected 7 Python 3.11 runtimes, found {python311_count}"
 
         # Verify no other Python versions
         assert "python3.9" not in main_tf
@@ -307,8 +310,8 @@ class TestLambdaIAMRoleAttachment:
         module_path = get_terraform_lambda_module_path()
         main_tf = (module_path / "main.tf").read_text()
 
-        # Each function should reference an IAM role
-        assert main_tf.count("role          = var.iam_role_arns.") == 6
+        # Each function should reference an IAM role (terraform fmt aligns '=', match flexibly)
+        assert len(re.findall(r"role\s*=\s*var\.iam_role_arns\.", main_tf)) == 7
 
         # Verify specific role references
         assert "var.iam_role_arns.metrics_collector" in main_tf

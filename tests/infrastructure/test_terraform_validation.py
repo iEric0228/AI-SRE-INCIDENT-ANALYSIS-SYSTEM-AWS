@@ -146,12 +146,13 @@ class TestIAMPolicyValidation:
             "bedrock:",
             "sns:",
             "secretsmanager:",
-            "ssm:",
             "cloudtrail:",
             "cloudwatch:Get",
             "cloudwatch:List",
         ]
 
+        # Note: logs_collector legitimately holds ssm:GetParameter to read the
+        # log-group mapping from Parameter Store, so ssm: is not forbidden here.
         for service in forbidden_services:
             assert (
                 service not in policy_section
@@ -394,13 +395,13 @@ class TestLambdaArchitecture:
 
         # Count Lambda function resources
         function_count = main_tf.count('resource "aws_lambda_function"')
-        assert function_count == 6, f"Expected 6 Lambda functions, found {function_count}"
+        assert function_count == 7, f"Expected 7 Lambda functions, found {function_count}"
 
-        # Verify all functions use ARM64
-        arm64_count = main_tf.count('architectures = ["arm64"]')
+        # Verify all functions use ARM64 (terraform fmt aligns '=', so match flexibly)
+        arm64_count = len(re.findall(r'architectures\s*=\s*\["arm64"\]', main_tf))
         assert (
-            arm64_count == 6
-        ), f"All 6 Lambda functions must use ARM64 architecture, found {arm64_count}"
+            arm64_count == 7
+        ), f"All 7 Lambda functions must use ARM64 architecture, found {arm64_count}"
 
     def test_no_x86_64_architecture(self):
         """Lambda functions must not use x86_64 architecture."""
@@ -425,8 +426,8 @@ class TestLambdaArchitecture:
             function_section = extract_resource_section(
                 main_tf, "aws_lambda_function", function_name
             )
-            assert (
-                'architectures = ["arm64"]' in function_section
+            assert re.search(
+                r'architectures\s*=\s*\["arm64"\]', function_section
             ), f"{function_name} must explicitly set ARM64 architecture"
 
 
@@ -471,13 +472,13 @@ class TestCloudWatchLogsRetention:
 
         # Count CloudWatch Log Group resources
         log_group_count = main_tf.count('resource "aws_cloudwatch_log_group"')
-        assert log_group_count == 6, f"Expected 6 log groups, found {log_group_count}"
+        assert log_group_count == 7, f"Expected 7 log groups, found {log_group_count}"
 
-        # Verify all log groups have 7-day retention
-        retention_count = main_tf.count("retention_in_days = 7")
+        # Retention is configured via var.log_retention_days (default 7) for each group
+        retention_count = main_tf.count("retention_in_days = var.log_retention_days")
         assert (
-            retention_count == 6
-        ), f"All 6 log groups must have 7-day retention, found {retention_count}"
+            retention_count == 7
+        ), f"All 7 log groups must use var.log_retention_days, found {retention_count}"
 
     def test_step_functions_log_group_has_7_day_retention(self):
         """Step Functions log group must have 7-day retention."""
@@ -513,13 +514,13 @@ class TestLambdaMemoryConfiguration:
         metrics_section = extract_resource_section(
             main_tf, "aws_lambda_function", "metrics_collector"
         )
-        assert "memory_size   = 512" in metrics_section
+        assert re.search(r"memory_size\s*=\s*512", metrics_section)
 
     def test_logs_collector_memory(self):
         """Logs Collector should have 512MB memory."""
         main_tf = load_terraform_file("lambda", "main.tf")
         logs_section = extract_resource_section(main_tf, "aws_lambda_function", "logs_collector")
-        assert "memory_size   = 512" in logs_section
+        assert re.search(r"memory_size\s*=\s*512", logs_section)
 
     def test_deploy_context_collector_memory(self):
         """Deploy Context Collector should have 512MB memory."""
@@ -527,7 +528,7 @@ class TestLambdaMemoryConfiguration:
         deploy_section = extract_resource_section(
             main_tf, "aws_lambda_function", "deploy_context_collector"
         )
-        assert "memory_size   = 512" in deploy_section
+        assert re.search(r"memory_size\s*=\s*512", deploy_section)
 
     def test_correlation_engine_memory(self):
         """Correlation Engine should have 256MB memory."""
@@ -535,13 +536,13 @@ class TestLambdaMemoryConfiguration:
         correlation_section = extract_resource_section(
             main_tf, "aws_lambda_function", "correlation_engine"
         )
-        assert "memory_size   = 256" in correlation_section
+        assert re.search(r"memory_size\s*=\s*256", correlation_section)
 
     def test_llm_analyzer_memory(self):
         """LLM Analyzer should have 1024MB memory."""
         main_tf = load_terraform_file("lambda", "main.tf")
         llm_section = extract_resource_section(main_tf, "aws_lambda_function", "llm_analyzer")
-        assert "memory_size   = 1024" in llm_section
+        assert re.search(r"memory_size\s*=\s*1024", llm_section)
 
     def test_notification_service_memory(self):
         """Notification Service should have 256MB memory."""
@@ -549,7 +550,7 @@ class TestLambdaMemoryConfiguration:
         notification_section = extract_resource_section(
             main_tf, "aws_lambda_function", "notification_service"
         )
-        assert "memory_size   = 256" in notification_section
+        assert re.search(r"memory_size\s*=\s*256", notification_section)
 
 
 class TestLambdaTimeoutConfiguration:
@@ -564,13 +565,13 @@ class TestLambdaTimeoutConfiguration:
         metrics_section = extract_resource_section(
             main_tf, "aws_lambda_function", "metrics_collector"
         )
-        assert "timeout       = 20" in metrics_section
+        assert re.search(r"timeout\s*=\s*20", metrics_section)
 
     def test_logs_collector_timeout(self):
         """Logs Collector should have 20s timeout."""
         main_tf = load_terraform_file("lambda", "main.tf")
         logs_section = extract_resource_section(main_tf, "aws_lambda_function", "logs_collector")
-        assert "timeout       = 20" in logs_section
+        assert re.search(r"timeout\s*=\s*20", logs_section)
 
     def test_deploy_context_collector_timeout(self):
         """Deploy Context Collector should have 20s timeout."""
@@ -578,7 +579,7 @@ class TestLambdaTimeoutConfiguration:
         deploy_section = extract_resource_section(
             main_tf, "aws_lambda_function", "deploy_context_collector"
         )
-        assert "timeout       = 20" in deploy_section
+        assert re.search(r"timeout\s*=\s*20", deploy_section)
 
     def test_correlation_engine_timeout(self):
         """Correlation Engine should have 10s timeout."""
@@ -586,13 +587,13 @@ class TestLambdaTimeoutConfiguration:
         correlation_section = extract_resource_section(
             main_tf, "aws_lambda_function", "correlation_engine"
         )
-        assert "timeout       = 10" in correlation_section
+        assert re.search(r"timeout\s*=\s*10", correlation_section)
 
     def test_llm_analyzer_timeout(self):
         """LLM Analyzer should have 40s timeout."""
         main_tf = load_terraform_file("lambda", "main.tf")
         llm_section = extract_resource_section(main_tf, "aws_lambda_function", "llm_analyzer")
-        assert "timeout       = 40" in llm_section
+        assert re.search(r"timeout\s*=\s*40", llm_section)
 
     def test_notification_service_timeout(self):
         """Notification Service should have 15s timeout."""
@@ -600,7 +601,7 @@ class TestLambdaTimeoutConfiguration:
         notification_section = extract_resource_section(
             main_tf, "aws_lambda_function", "notification_service"
         )
-        assert "timeout       = 15" in notification_section
+        assert re.search(r"timeout\s*=\s*15", notification_section)
 
 
 class TestTerraformValidation:
