@@ -862,6 +862,7 @@ class TestResponseParserObservability:
     def test_raw_response_logged_at_debug_before_parsing(self, sample_llm_response):
         """parse_llm_response should log the raw response at DEBUG before any parsing."""
         import logging
+
         from llm_analyzer.response_parser import parse_llm_response as _parse
 
         debug_messages = []
@@ -895,7 +896,7 @@ class TestCircuitBreakerSubModule:
 
     def test_circuit_breaker_module_exposes_global_instance(self):
         """bedrock_circuit_breaker should be importable from circuit_breaker sub-module."""
-        from llm_analyzer.circuit_breaker import bedrock_circuit_breaker, CircuitBreaker
+        from llm_analyzer.circuit_breaker import CircuitBreaker, bedrock_circuit_breaker
 
         assert isinstance(bedrock_circuit_breaker, CircuitBreaker)
 

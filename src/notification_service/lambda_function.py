@@ -9,7 +9,6 @@ import html as html_lib
 import json
 import logging
 import os
-
 import time
 import traceback
 from datetime import datetime, timezone
@@ -18,7 +17,7 @@ from typing import Any, Dict, cast
 import boto3
 import requests
 from botocore.exceptions import ClientError
-
+from metrics import put_notification_delivery_metric
 from models import (
     AnalysisReport,
     DeliveryStatus,
@@ -26,7 +25,6 @@ from models import (
     NotificationOutput,
     Status,
 )
-from metrics import put_notification_delivery_metric
 
 # Configure logging
 logger = logging.getLogger()

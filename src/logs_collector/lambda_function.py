@@ -28,10 +28,9 @@ logs_client = boto3.client("logs")
 
 # Import metrics utility
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
-from metrics import put_collector_success_metric  # noqa: E402
-
 # Initialize log group resolver with SSM-based configuration
 from log_group_resolver import LogGroupResolver  # noqa: E402
+from metrics import put_collector_success_metric  # noqa: E402
 
 _ssm_client = boto3.client("ssm")
 _LOG_GROUP_MAPPING_PARAM = os.environ.get(

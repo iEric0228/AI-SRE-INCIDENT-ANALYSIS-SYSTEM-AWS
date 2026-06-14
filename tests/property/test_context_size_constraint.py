@@ -17,12 +17,7 @@ from hypothesis import strategies as st
 from hypothesis.strategies import composite
 
 # Import shared models
-from shared.models import (
-    AlarmInfo,
-    CompletenessInfo,
-    ResourceInfo,
-    StructuredContext,
-)
+from shared.models import AlarmInfo, CompletenessInfo, ResourceInfo, StructuredContext
 
 # Import correlation engine functions directly
 # Clear any cached lambda_function module first
