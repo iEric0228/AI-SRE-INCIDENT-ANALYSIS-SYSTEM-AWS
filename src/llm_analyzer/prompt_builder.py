@@ -34,7 +34,7 @@ def _sanitize_structured_context(context: Dict[str, Any]) -> Dict[str, Any]:
     Truncates log messages and removes control characters from string fields
     within logs, metrics, and changes collections.
     """
-    sanitized = json.loads(json.dumps(context))  # deep copy
+    sanitized: Dict[str, Any] = json.loads(json.dumps(context))  # deep copy
 
     # Sanitize log entries
     logs = sanitized.get("logs", {})

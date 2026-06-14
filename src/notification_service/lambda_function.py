@@ -13,7 +13,7 @@ import os
 import time
 import traceback
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import boto3
 import requests
@@ -192,7 +192,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
         )
 
-        return output.to_dict()
+        # NotificationOutput is imported from the Lambda-flattened `models`
+        # module (ignored by mypy), so its typed to_dict() is erased to Any.
+        return cast(Dict[str, Any], output.to_dict())
 
     except Exception as e:
         logger.error(
