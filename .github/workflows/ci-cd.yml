@@ -23,7 +23,10 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.11'
-  TERRAFORM_VERSION: '1.6.0'
+  # 1.6.0 cannot verify the signature of current AWS provider releases
+  # (terraform init fails on "error checking signature"). Align with the
+  # ephemeral-e2e workflow, which installs the provider successfully on 1.9.8.
+  TERRAFORM_VERSION: '1.9.8'
   AWS_REGION: us-east-1
 
 jobs:
