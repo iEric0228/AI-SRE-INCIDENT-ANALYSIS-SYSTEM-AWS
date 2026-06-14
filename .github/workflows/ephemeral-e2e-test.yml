@@ -85,9 +85,13 @@ jobs:
             rm -rf "${BUILD_DIR}"
             mkdir -p "${BUILD_DIR}"
 
-            # Copy function code and shared modules
-            cp "${FUNC_DIR}/lambda_function.py" "${BUILD_DIR}/"
-            cp -r "${GITHUB_WORKSPACE}/src/shared" "${BUILD_DIR}/shared"
+            # Copy ALL function .py files (lambda_function.py plus siblings such
+            # as circuit_breaker.py / prompt_builder.py / log_group_resolver.py)
+            # and flatten shared/ into the build root, so the Lambda flat imports
+            # ('from metrics import ...', 'from circuit_breaker import ...')
+            # resolve at runtime (/var/task is on sys.path, /var/task/shared is not).
+            cp "${FUNC_DIR}"/*.py "${BUILD_DIR}/"
+            cp "${GITHUB_WORKSPACE}/src/shared"/*.py "${BUILD_DIR}/"
 
             # Install requests for notification_service only
             if [ "${func}" = "notification_service" ]; then
@@ -393,24 +397,24 @@ jobs:
           ACCOUNT_ID="${{ steps.aws-account.outputs.account_id }}"
           RESOURCE_ARN="arn:aws:lambda:${{ env.AWS_REGION }}:${ACCOUNT_ID}:function:${{ env.EPHEMERAL_PREFIX }}-metrics-collector"
 
+          # Flat structure matching event_transformer's normalized output (the
+          # real Step Functions input). The state machine reads top-level fields
+          # such as $.alarmName, so nesting them under "incident" breaks
+          # StoreIncident. The E2E starts the state machine directly, so it must
+          # provide the already-transformed shape.
           cat > /tmp/test-event.json << EOF
           {
-            "incident": {
-              "incidentId": "${INCIDENT_ID}",
-              "alarmName": "e2e-test-high-cpu-alarm",
-              "alarmArn": "arn:aws:cloudwatch:${{ env.AWS_REGION }}:${ACCOUNT_ID}:alarm:e2e-test-high-cpu-alarm",
-              "resourceArn": "${RESOURCE_ARN}",
-              "timestamp": "${TIMESTAMP}",
-              "ttl": ${TTL},
-              "alarmState": "ALARM",
-              "metricName": "Errors",
-              "namespace": "AWS/Lambda",
-              "alarmDescription": "E2E test alarm - simulated high error rate"
-            },
+            "incidentId": "${INCIDENT_ID}",
+            "alarmName": "e2e-test-high-cpu-alarm",
+            "alarmArn": "arn:aws:cloudwatch:${{ env.AWS_REGION }}:${ACCOUNT_ID}:alarm:e2e-test-high-cpu-alarm",
             "resourceArn": "${RESOURCE_ARN}",
             "timestamp": "${TIMESTAMP}",
+            "ttl": ${TTL},
+            "alarmState": "ALARM",
+            "metricName": "Errors",
             "namespace": "AWS/Lambda",
-            "incidentId": "${INCIDENT_ID}"
+            "alarmDescription": "E2E test alarm - simulated high error rate",
+            "eventSource": "cloudwatch"
           }
           EOF
 
