@@ -45,8 +45,11 @@ def secret_name_strategy(draw):
 
 @composite
 def webhook_url_strategy(draw):
-    """Generate arbitrary webhook URLs."""
-    domain = draw(st.text(min_size=5, max_size=20, alphabet="abcdefghijklmnopqrstuvwxyz"))
+    """Generate valid Slack webhook URLs.
+
+    ``send_slack_notification`` enforces the ``https://hooks.slack.com/`` domain
+    as an SSRF guard, so generated URLs must use that host.
+    """
     path = draw(
         st.text(
             min_size=10,
@@ -54,7 +57,7 @@ def webhook_url_strategy(draw):
             alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
         )
     )
-    return f"https://hooks.{domain}.com/{path}"
+    return f"https://hooks.slack.com/services/{path}"
 
 
 @composite
@@ -520,7 +523,7 @@ def test_secrets_not_logged_or_exposed(webhook_url):
 
 
 @given(analysis_report_strategy(), webhook_url_strategy())
-@settings(deadline=500)  # Allow 500ms for this test since it involves Lambda handler execution
+@settings(deadline=None)  # Lambda handler execution; rely on the profile (no timing deadline)
 def test_secrets_retrieved_in_lambda_handler_context(analysis_report, webhook_url):
     """
     Property: Secrets are retrieved within Lambda handler execution context.

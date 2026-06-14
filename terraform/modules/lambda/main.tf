@@ -58,9 +58,9 @@ resource "aws_lambda_function" "logs_collector" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE         = var.dynamodb_table_name
-      LOG_LEVEL              = var.log_level
-      INCIDENT_TOPIC_ARN     = var.sns_topic_arn
+      DYNAMODB_TABLE          = var.dynamodb_table_name
+      LOG_LEVEL               = var.log_level
+      INCIDENT_TOPIC_ARN      = var.sns_topic_arn
       LOG_GROUP_MAPPING_PARAM = var.log_group_mapping_parameter_name
     }
   }

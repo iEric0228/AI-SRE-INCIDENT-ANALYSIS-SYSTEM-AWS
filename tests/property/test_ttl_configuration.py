@@ -204,11 +204,13 @@ def test_ttl_calculation_consistency(timestamps):
         ttl = int((ts + timedelta(days=90)).timestamp())
         ttls.append(ttl)
 
-    # PROPERTY ASSERTION 1: TTL ordering must match incident timestamp ordering
+    # PROPERTY ASSERTION 1: TTL ordering must match incident timestamp ordering.
+    # TTL is stored as integer epoch seconds (DynamoDB TTL granularity), so two
+    # timestamps within the same second yield equal TTLs — require non-decreasing
+    # order rather than strictly increasing.
     for i in range(len(ttls) - 1):
-        # Since timestamps are unique and sorted, TTLs should also be sorted
         assert (
-            ttls[i] < ttls[i + 1]
+            ttls[i] <= ttls[i + 1]
         ), f"TTL ordering must match incident timestamp ordering (ttl[{i}]={ttls[i]}, ttl[{i+1}]={ttls[i+1]})"
 
     # PROPERTY ASSERTION 2: TTL must always be 90 days in the future

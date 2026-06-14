@@ -123,9 +123,7 @@ def invoke_bedrock(
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
         }
 
         # Invoke model
@@ -184,7 +182,7 @@ def create_fallback_report(incident_id: str, error_message: str) -> Dict[str, An
     """
     return {
         "incidentId": incident_id,
-        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "analysis": {
             "rootCauseHypothesis": "Analysis unavailable due to LLM service error",
             "confidence": "none",
@@ -295,7 +293,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Invoke Bedrock with circuit breaker (bedrock_circuit_breaker is Lambda-global)
         model_id = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
         try:
-            llm_response = bedrock_circuit_breaker.call(invoke_bedrock, bedrock_client, prompt, model_id)
+            llm_response = bedrock_circuit_breaker.call(
+                invoke_bedrock, bedrock_client, prompt, model_id
+            )
         except Exception as e:
             if "Circuit breaker is OPEN" in str(e):
                 logger.error(
@@ -318,7 +318,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Construct analysis report
         analysis_report = {
             "incidentId": correlation_id,
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "analysis": analysis,
             "metadata": metadata,
         }

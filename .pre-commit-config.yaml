@@ -1,0 +1,55 @@
+# Pre-commit hooks — catch the same issues locally that CI gates on.
+#
+# Formatting/lint hooks are scoped to src/ and tests/ to mirror the existing
+# lint scope (Makefile `lint`/`format`, CI `python-lint`); scripts/ carries
+# pre-existing whitespace debt that is intentionally left untouched here.
+# mypy runs in CI only — an isolated hook env lacks the project's type stubs
+# and would produce false positives. Hook versions track requirements-dev.txt.
+#
+# Install:  pre-commit install   (then runs automatically on `git commit`)
+# Run all:  pre-commit run --all-files
+
+repos:
+  # --- General hygiene (non-mutating hooks safe to run repo-wide) ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+      # Mutating hooks scoped to the actively-linted code paths
+      - id: trailing-whitespace
+        files: ^(src|tests)/
+      - id: end-of-file-fixer
+        files: ^(src|tests)/
+
+  # --- Python formatting / linting (mirrors CI python-lint) ---
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.1.0
+    hooks:
+      - id: black
+        files: ^(src|tests)/
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        files: ^(src|tests)/
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        files: ^(src|tests)/
+
+  # --- Terraform formatting (mirrors CI terraform fmt -check gate) ---
+  - repo: local
+    hooks:
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: terraform fmt -recursive
+        language: system
+        files: \.tf$
+        pass_filenames: false

@@ -106,7 +106,7 @@ def test_incident_query_capability_wrapper():
     resource_arn=resource_arn_strategy(),
     severity=st.sampled_from(["critical", "high", "medium", "low"]),
 )
-@settings(deadline=2000)  # 2 second deadline for DynamoDB operations
+@settings(deadline=None)  # mocked DynamoDB (moto); avoid load-sensitive timing deadline
 @pytest.mark.property_test
 @pytest.mark.tag("Feature: ai-sre-incident-analysis, Property 24: Incident Query Capability")
 def _incident_query_capability_inner(

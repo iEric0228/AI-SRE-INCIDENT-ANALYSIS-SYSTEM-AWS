@@ -10,7 +10,6 @@ import logging
 import re
 from typing import Any, Dict
 
-import boto3
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,7 @@ def _sanitize_structured_context(context: Dict[str, Any]) -> Dict[str, Any]:
     Truncates log messages and removes control characters from string fields
     within logs, metrics, and changes collections.
     """
-    sanitized = json.loads(json.dumps(context))  # deep copy
+    sanitized: Dict[str, Any] = json.loads(json.dumps(context))  # deep copy
 
     # Sanitize log entries
     logs = sanitized.get("logs", {})
@@ -189,7 +188,9 @@ CONSTRAINTS:
 ANALYSIS:"""
 
 
-def select_prompt_template(event_source: str, ssm_client=None, parameter_name: str = "") -> Dict[str, str]:
+def select_prompt_template(
+    event_source: str, ssm_client=None, parameter_name: str = ""
+) -> Dict[str, str]:
     """
     Select the appropriate prompt template based on event source.
 

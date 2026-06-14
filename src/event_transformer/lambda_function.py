@@ -416,14 +416,14 @@ def _extract_guardduty_resource_arn(resource_info: Dict[str, Any], event: Dict[s
     # Check for Lambda function
     lambda_details = resource_info.get("lambdaDetails", {})
     if lambda_details:
-        function_arn = lambda_details.get("functionArn", "")
+        function_arn: str = lambda_details.get("functionArn", "")
         if function_arn:
             return function_arn
 
     # Check for ECS cluster
     ecs_details = resource_info.get("ecsClusterDetails", {})
     if ecs_details:
-        cluster_arn = ecs_details.get("arn", "")
+        cluster_arn: str = ecs_details.get("arn", "")
         if cluster_arn:
             return cluster_arn
 
@@ -525,7 +525,7 @@ def _unwrap_sns_event(event: Dict[str, Any]) -> Dict[str, Any]:
     2. EventBridge input_transformer flattened format (alarmName, state, configuration)
     """
     record = event["Records"][0]["Sns"]
-    message = json.loads(record["Message"])
+    message: Dict[str, Any] = json.loads(record["Message"])
 
     # GuardDuty or Health events pass through as full EventBridge events
     if message.get("source") in ("aws.guardduty", "aws.health"):

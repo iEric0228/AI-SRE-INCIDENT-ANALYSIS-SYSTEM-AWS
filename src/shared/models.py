@@ -41,9 +41,7 @@ def _serialize_timestamp(value: Any, field_name: str) -> str:
         try:
             datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
-            raise ValueError(
-                f"{field_name} contains an unparseable timestamp string: {value!r}"
-            )
+            raise ValueError(f"{field_name} contains an unparseable timestamp string: {value!r}")
         return value
 
     raise ValueError(

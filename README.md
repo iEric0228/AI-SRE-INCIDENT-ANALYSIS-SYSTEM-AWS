@@ -571,6 +571,19 @@ Log group resolution can be customized at runtime via SSM Parameter Store withou
 
 **Expected cost within free tier:** $0-5/month
 
+### Teardown
+
+To avoid ongoing charges, destroy all provisioned resources when you're done:
+
+```bash
+cd terraform && terraform destroy
+```
+
+If you ran the optional test scenario, tear it down separately with `make tf-destroy`
+(equivalent to `cd terraform/test-scenario && terraform destroy`).
+
+See [QUICKSTART.md](QUICKSTART.md#cleanup) and [terraform/DEPLOYMENT.md](terraform/DEPLOYMENT.md) for per-workspace teardown details.
+
 ## Troubleshooting
 
 ### Alarm Not Triggering

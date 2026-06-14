@@ -207,9 +207,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # no
             )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_metric = {
-                executor.submit(_collect_single, mn): mn for mn in metric_names
-            }
+            future_to_metric = {executor.submit(_collect_single, mn): mn for mn in metric_names}
             for future in as_completed(future_to_metric):
                 metric_name = future_to_metric[future]
                 try:
@@ -488,7 +486,9 @@ def parse_resource_arn(resource_arn: str) -> Tuple[str, List[Dict[str, str]]]:
 
     elif service == "elasticache":
         # arn:aws:elasticache:region:account:cluster:cluster-id
-        cluster_id = resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        cluster_id = (
+            resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        )
         dimensions = [{"Name": "CacheClusterId", "Value": cluster_id}]
 
     elif service == "es":

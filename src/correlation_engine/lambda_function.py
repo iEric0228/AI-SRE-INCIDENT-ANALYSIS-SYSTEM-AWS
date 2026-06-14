@@ -28,12 +28,7 @@ sys.path.insert(0, "/opt/python")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 
 from metrics import put_metric, put_workflow_duration_metric  # noqa: E402
-from models import (  # noqa: E402
-    AlarmInfo,
-    CompletenessInfo,
-    ResourceInfo,
-    StructuredContext,
-)
+from models import AlarmInfo, CompletenessInfo, ResourceInfo, StructuredContext  # noqa: E402
 
 # Configure structured logging
 logger = logging.getLogger()
