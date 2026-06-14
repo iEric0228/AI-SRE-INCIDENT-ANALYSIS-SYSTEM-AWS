@@ -37,8 +37,6 @@ sns_client = boto3.client("sns")
 # Environment variables
 SLACK_SECRET_NAME = os.environ.get("SLACK_SECRET_NAME", "incident-analysis/slack-webhook")
 
-# Secrets Manager cache (module-level, persists across warm invocations)
-_webhook_cache: Dict[str, Any] = {"url": None, "expires": 0.0}
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
 INCIDENT_STORE_BASE_URL = os.environ.get(
     "INCIDENT_STORE_BASE_URL", "https://console.aws.amazon.com/dynamodb/incident"
@@ -310,10 +308,7 @@ def send_email_notification(analysis_report: AnalysisReport) -> None:
 
 def get_slack_webhook_url() -> str:
     """
-    Retrieve Slack webhook URL from Secrets Manager with caching.
-
-    Caches the webhook URL for 5 minutes to reduce Secrets Manager API calls
-    and cost. Cache is module-level, persisting across warm Lambda invocations.
+    Retrieve the Slack webhook URL from Secrets Manager at runtime.
 
     Returns:
         Webhook URL
@@ -321,17 +316,10 @@ def get_slack_webhook_url() -> str:
     Raises:
         Exception: If secret retrieval fails
     """
-    now = time.monotonic()
-    if _webhook_cache["url"] and now < _webhook_cache["expires"]:
-        return str(_webhook_cache["url"])
-
     try:
         response = secrets_manager.get_secret_value(SecretId=SLACK_SECRET_NAME)
         secret = json.loads(response["SecretString"])
-        url = str(secret["webhook_url"])
-        _webhook_cache["url"] = url
-        _webhook_cache["expires"] = now + 300  # 5-minute TTL
-        return url
+        return str(secret["webhook_url"])
     except ClientError as e:
         raise Exception(f"Failed to retrieve Slack webhook URL: {e}")
     except (KeyError, json.JSONDecodeError) as e:
