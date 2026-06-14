@@ -82,7 +82,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if not log_group_name:
             resolved_groups = _log_group_resolver.resolve(resource_arn)
-            log_group_name = resolved_groups[0] if resolved_groups else map_resource_arn_to_log_group(resource_arn)
+            log_group_name = (
+                resolved_groups[0]
+                if resolved_groups
+                else map_resource_arn_to_log_group(resource_arn)
+            )
 
         # Build list of log groups to query
         log_groups_to_query = [{"name": log_group_name, "source": "application"}]
@@ -404,7 +408,9 @@ def map_resource_arn_to_log_group(resource_arn: str) -> str:
 
     elif service == "elasticache":
         # arn:aws:elasticache:region:account:cluster:cluster-id
-        cluster_id = resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        cluster_id = (
+            resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        )
         return f"/aws/elasticache/{cluster_id}"
 
     elif service == "es":
@@ -460,7 +466,10 @@ def _get_filter_pattern(log_source: str) -> str:
 
 
 def collect_logs(
-    log_group_name: str, start_time: datetime, end_time: datetime, correlation_id: str,
+    log_group_name: str,
+    start_time: datetime,
+    end_time: datetime,
+    correlation_id: str,
     filter_pattern: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """

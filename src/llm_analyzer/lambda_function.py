@@ -123,9 +123,7 @@ def invoke_bedrock(
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
         }
 
         # Invoke model
@@ -295,7 +293,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Invoke Bedrock with circuit breaker (bedrock_circuit_breaker is Lambda-global)
         model_id = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
         try:
-            llm_response = bedrock_circuit_breaker.call(invoke_bedrock, bedrock_client, prompt, model_id)
+            llm_response = bedrock_circuit_breaker.call(
+                invoke_bedrock, bedrock_client, prompt, model_id
+            )
         except Exception as e:
             if "Circuit breaker is OPEN" in str(e):
                 logger.error(

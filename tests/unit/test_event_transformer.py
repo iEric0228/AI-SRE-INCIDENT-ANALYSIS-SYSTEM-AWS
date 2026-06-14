@@ -423,10 +423,13 @@ class TestSNSPublishing:
 class TestLambdaHandler:
     """Test Lambda handler integration."""
 
-    @patch.dict(os.environ, {
-        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
-        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+            "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+        },
+    )
     @patch("event_transformer.lambda_function.sfn_client")
     @patch("event_transformer.lambda_function.sns_client")
     def test_handler_success(self, mock_sns, mock_sfn):
@@ -492,10 +495,13 @@ class TestLambdaHandler:
         assert body["status"] == "failed"
         assert body["errorType"] == "ValidationException"
 
-    @patch.dict(os.environ, {
-        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
-        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+            "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+        },
+    )
     @patch("event_transformer.lambda_function.sfn_client")
     def test_handler_retryable_error(self, mock_sfn):
         """Test that retryable errors are raised for Lambda retry."""
@@ -523,15 +529,19 @@ class TestLambdaHandler:
 
         assert exc_info.value.response["Error"]["Code"] == "Throttling"
 
-    @patch.dict(os.environ, {
-        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
-        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+            "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+        },
+    )
     @patch("event_transformer.lambda_function.sfn_client")
     def test_handler_non_retryable_error(self, mock_sfn):
         """Test that non-retryable errors return error response."""
         mock_sfn.start_execution.side_effect = ClientError(
-            {"Error": {"Code": "InvalidParameter", "Message": "Invalid state machine"}}, "StartExecution"
+            {"Error": {"Code": "InvalidParameter", "Message": "Invalid state machine"}},
+            "StartExecution",
         )
 
         event = {
@@ -557,10 +567,13 @@ class TestLambdaHandler:
         assert body["status"] == "failed"
         assert body["errorType"] == "InvalidParameter"
 
-    @patch.dict(os.environ, {
-        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
-        "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+            "STATE_MACHINE_ARN": "arn:aws:states:us-east-1:123456789012:stateMachine:test-sm",
+        },
+    )
     @patch("event_transformer.lambda_function.sfn_client")
     def test_handler_unexpected_event_source(self, mock_sfn):
         """Test handler logs warning for unexpected event source."""

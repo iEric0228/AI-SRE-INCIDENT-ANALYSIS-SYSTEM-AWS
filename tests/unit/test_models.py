@@ -860,9 +860,7 @@ class TestTimestampTypeGuardsInModels:
 
     def test_log_entry_to_dict_invalid_timestamp_raises(self):
         """LogEntry.to_dict() should raise ValueError for invalid timestamp type."""
-        entry = LogEntry(
-            timestamp=None, log_level="ERROR", message="test", log_stream="stream"
-        )
+        entry = LogEntry(timestamp=None, log_level="ERROR", message="test", log_stream="stream")
         with pytest.raises(ValueError) as exc_info:
             entry.to_dict()
         assert "LogEntry.timestamp" in str(exc_info.value)

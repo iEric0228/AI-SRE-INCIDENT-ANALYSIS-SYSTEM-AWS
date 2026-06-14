@@ -792,8 +792,10 @@ class TestResponseParserObservability:
             _parse(json.dumps(sample_llm_response))
 
         level_calls = [
-            c for c in mock_put.call_args_list
-            if (c.args and c.args[0] == "LLMParseLevel") or c.kwargs.get("metric_name") == "LLMParseLevel"
+            c
+            for c in mock_put.call_args_list
+            if (c.args and c.args[0] == "LLMParseLevel")
+            or c.kwargs.get("metric_name") == "LLMParseLevel"
         ]
         assert len(level_calls) == 1
         # value should be 1.0 (level 1)
@@ -809,8 +811,10 @@ class TestResponseParserObservability:
             _parse("This is a plain text answer without any JSON")
 
         level_calls = [
-            c for c in mock_put.call_args_list
-            if (c.args and c.args[0] == "LLMParseLevel") or c.kwargs.get("metric_name") == "LLMParseLevel"
+            c
+            for c in mock_put.call_args_list
+            if (c.args and c.args[0] == "LLMParseLevel")
+            or c.kwargs.get("metric_name") == "LLMParseLevel"
         ]
         assert len(level_calls) == 1
         call = level_calls[0]
@@ -845,8 +849,10 @@ class TestResponseParserObservability:
             _parse(bad_response)
 
         level_calls = [
-            c for c in mock_put.call_args_list
-            if (c.args and c.args[0] == "LLMParseLevel") or c.kwargs.get("metric_name") == "LLMParseLevel"
+            c
+            for c in mock_put.call_args_list
+            if (c.args and c.args[0] == "LLMParseLevel")
+            or c.kwargs.get("metric_name") == "LLMParseLevel"
         ]
         assert len(level_calls) == 1
         call = level_calls[0]
@@ -879,9 +885,9 @@ class TestResponseParserObservability:
             parser_logger.removeHandler(handler)
             parser_logger.setLevel(original_level)
 
-        assert any("rawResponse" in m or "Raw LLM" in m for m in debug_messages), (
-            "Expected a DEBUG log containing raw response; got: " + str(debug_messages)
-        )
+        assert any(
+            "rawResponse" in m or "Raw LLM" in m for m in debug_messages
+        ), "Expected a DEBUG log containing raw response; got: " + str(debug_messages)
 
 
 class TestCircuitBreakerSubModule:
@@ -898,9 +904,7 @@ class TestCircuitBreakerSubModule:
         assert hasattr(lambda_function, "CircuitBreaker")
         assert hasattr(lambda_function, "CircuitState")
         assert hasattr(lambda_function, "bedrock_circuit_breaker")
-        assert isinstance(
-            lambda_function.bedrock_circuit_breaker, lambda_function.CircuitBreaker
-        )
+        assert isinstance(lambda_function.bedrock_circuit_breaker, lambda_function.CircuitBreaker)
 
     def test_prompt_builder_re_exported_from_lambda_function(self):
         """lambda_function should re-export prompt_builder helpers."""

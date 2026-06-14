@@ -244,7 +244,9 @@ def send_slack_notification(analysis_report: AnalysisReport) -> None:
 
     # Validate webhook URL domain to prevent data exfiltration via misconfigured secret
     if not webhook_url.startswith("https://hooks.slack.com/"):
-        raise ValueError("Webhook URL does not match expected Slack domain (https://hooks.slack.com/)")
+        raise ValueError(
+            "Webhook URL does not match expected Slack domain (https://hooks.slack.com/)"
+        )
 
     # Format message
     message = format_slack_message(analysis_report)

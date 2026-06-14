@@ -189,7 +189,9 @@ CONSTRAINTS:
 ANALYSIS:"""
 
 
-def select_prompt_template(event_source: str, ssm_client=None, parameter_name: str = "") -> Dict[str, str]:
+def select_prompt_template(
+    event_source: str, ssm_client=None, parameter_name: str = ""
+) -> Dict[str, str]:
     """
     Select the appropriate prompt template based on event source.
 

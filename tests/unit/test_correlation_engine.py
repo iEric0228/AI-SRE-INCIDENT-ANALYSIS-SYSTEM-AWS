@@ -862,18 +862,13 @@ class TestTruncationObservability:
                 lambda_function.lambda_handler(event, None)
 
         # At least one WARNING record should contain "truncating"
-        warning_messages = [
-            r.getMessage()
-            for r in records
-            if r.levelname == "WARNING"
-        ]
+        warning_messages = [r.getMessage() for r in records if r.levelname == "WARNING"]
         truncation_warnings = [
-            m for m in warning_messages
-            if "truncat" in m.lower() or "exceeds" in m.lower()
+            m for m in warning_messages if "truncat" in m.lower() or "exceeds" in m.lower()
         ]
-        assert len(truncation_warnings) > 0, (
-            "Expected at least one WARNING log about truncation, got: " + str(warning_messages)
-        )
+        assert (
+            len(truncation_warnings) > 0
+        ), "Expected at least one WARNING log about truncation, got: " + str(warning_messages)
 
     def test_truncation_emits_context_truncated_metric(self):
         """When context exceeds 50KB, put_metric must be called with 'ContextTruncated'."""
@@ -887,11 +882,13 @@ class TestTruncationObservability:
             lambda_function.lambda_handler(event, None)
 
         # Collect all metric names emitted
-        emitted_metric_names = [call.args[0] if call.args else call.kwargs.get("metric_name")
-                                 for call in mock_put_metric.call_args_list]
-        assert "ContextTruncated" in emitted_metric_names, (
-            f"Expected ContextTruncated metric; got: {emitted_metric_names}"
-        )
+        emitted_metric_names = [
+            call.args[0] if call.args else call.kwargs.get("metric_name")
+            for call in mock_put_metric.call_args_list
+        ]
+        assert (
+            "ContextTruncated" in emitted_metric_names
+        ), f"Expected ContextTruncated metric; got: {emitted_metric_names}"
 
     def test_no_truncation_metric_when_under_limit(self):
         """When context is within the 50KB limit, ContextTruncated must NOT be emitted."""
@@ -921,8 +918,10 @@ class TestTruncationObservability:
         ):
             lambda_function.lambda_handler(small_event, None)
 
-        emitted_metric_names = [call.args[0] if call.args else call.kwargs.get("metric_name")
-                                 for call in mock_put_metric.call_args_list]
+        emitted_metric_names = [
+            call.args[0] if call.args else call.kwargs.get("metric_name")
+            for call in mock_put_metric.call_args_list
+        ]
         assert "ContextTruncated" not in emitted_metric_names
 
     @staticmethod

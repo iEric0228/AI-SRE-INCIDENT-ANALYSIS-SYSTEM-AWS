@@ -444,7 +444,9 @@ def parse_resource_arn_for_cloudtrail(resource_arn: str) -> Tuple[str, Optional[
 
     elif service == "elasticache":
         # arn:aws:elasticache:region:account:cluster:cluster-id
-        resource_id = resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        resource_id = (
+            resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
+        )
         return service, resource_id
 
     elif service == "es":

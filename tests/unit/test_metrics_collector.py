@@ -592,6 +592,7 @@ class TestParallelMetricCollection:
             call_count["n"] += 1
             if kwargs.get("MetricName") == "Errors":
                 from botocore.exceptions import ClientError
+
                 raise ClientError(
                     {"Error": {"Code": "InvalidParameterValue", "Message": "bad param"}},
                     "GetMetricStatistics",
