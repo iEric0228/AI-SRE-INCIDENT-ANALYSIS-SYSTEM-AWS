@@ -53,9 +53,21 @@ variable "state_machine_arn" {
 }
 
 variable "lambda_concurrency_limit" {
-  description = "Maximum concurrent executions per Lambda function (prevents runaway costs)"
+  description = <<-EOT
+    Reserved concurrent executions per Lambda function. -1 (default) means no
+    reservation: functions share the account's unreserved pool, which deploys on
+    any account. A positive value reserves capacity per function and requires the
+    account to keep >=100 unreserved concurrency available
+    (i.e. account quota >= 100 + value * number_of_functions); otherwise AWS
+    rejects PutFunctionConcurrency with InvalidParameter.
+  EOT
   type        = number
-  default     = 100
+  default     = -1
+
+  validation {
+    condition     = var.lambda_concurrency_limit == -1 || var.lambda_concurrency_limit >= 0
+    error_message = "lambda_concurrency_limit must be -1 (no reservation) or a non-negative integer."
+  }
 }
 
 variable "log_level" {
