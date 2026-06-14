@@ -262,6 +262,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-TerraformPlan
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Package Lambda functions
+        run: bash scripts/package-lambdas.sh
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -389,6 +397,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-DeployDev
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Package Lambda functions
+        run: bash scripts/package-lambdas.sh
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -457,6 +473,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-DeployStaging
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Package Lambda functions
+        run: bash scripts/package-lambdas.sh
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -523,6 +547,14 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-DeployProd
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Package Lambda functions
+        run: bash scripts/package-lambdas.sh
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
