@@ -540,6 +540,7 @@ jobs:
           echo "============================================"
 
       - name: Terraform Destroy (Cleanup)
+        id: destroy
         if: always()
         working-directory: terraform
         run: |
@@ -548,21 +549,32 @@ jobs:
             -backend-config="key=ephemeral-tests/run-${{ github.run_id }}/terraform.tfstate" \
             2>/dev/null || true
 
+          # Do NOT swallow the destroy exit code: a failed destroy must mark this
+          # step as failed so the state file is preserved (see steps below).
           terraform destroy -auto-approve \
             -var="environment=dev" \
             -var="aws_region=${{ env.AWS_REGION }}" \
             -var="project_name=${{ env.EPHEMERAL_PREFIX }}" \
             -var="dynamodb_table_name=${{ env.EPHEMERAL_PREFIX }}-store" \
             -var='email_notification_endpoints=["${{ secrets.NOTIFICATION_EMAIL }}"]' \
-            -var="create_cloudwatch_alarms=false" \
-            || echo "WARNING: Terraform destroy may have partially failed."
+            -var="create_cloudwatch_alarms=false"
 
       - name: Cleanup Ephemeral State File
-        if: always()
+        # Only remove the remote state when destroy actually succeeded. Deleting
+        # the state after a failed destroy orphans the resources (no state -> no
+        # terraform destroy possible); keeping it lets the teardown be retried.
+        if: always() && steps.destroy.outcome == 'success'
         run: |
           aws s3 rm "s3://ericchiu-terraform-state/ephemeral-tests/run-${{ github.run_id }}/" \
             --recursive 2>/dev/null || true
           echo "State file cleanup complete."
+
+      - name: Preserve state on failed destroy
+        if: always() && steps.destroy.outcome == 'failure'
+        run: |
+          echo "::warning::terraform destroy failed - remote state PRESERVED at ephemeral-tests/run-${{ github.run_id }}/terraform.tfstate so resources stay tracked and the teardown can be retried (a deleted state would orphan them)."
+          echo "To finish teardown locally: re-init terraform with backend key 'ephemeral-tests/run-${{ github.run_id }}/terraform.tfstate', then run 'terraform destroy' with project_name=${{ env.EPHEMERAL_PREFIX }}."
+          exit 1
 
       - name: Final Status
         if: always()
