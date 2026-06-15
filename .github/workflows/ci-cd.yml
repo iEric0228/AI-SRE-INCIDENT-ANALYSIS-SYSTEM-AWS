@@ -290,6 +290,7 @@ jobs:
           terraform plan \
             -var="environment=dev" \
             -var="aws_region=${{ env.AWS_REGION }}" \
+            -var='email_notification_endpoints=["${{ secrets.NOTIFICATION_EMAIL }}"]' \
             -out=tfplan \
             -no-color
         continue-on-error: true
@@ -427,6 +428,7 @@ jobs:
           terraform apply \
             -var="environment=dev" \
             -var="aws_region=${{ env.AWS_REGION }}" \
+            -var='email_notification_endpoints=["${{ secrets.NOTIFICATION_EMAIL }}"]' \
             -auto-approve
 
       - name: Generate Deployment Summary
@@ -503,6 +505,7 @@ jobs:
           terraform apply \
             -var="environment=staging" \
             -var="aws_region=${{ env.AWS_REGION }}" \
+            -var='email_notification_endpoints=["${{ secrets.NOTIFICATION_EMAIL }}"]' \
             -auto-approve
 
       - name: Generate Deployment Summary
@@ -579,6 +582,7 @@ jobs:
           terraform plan \
             -var="environment=prod" \
             -var="aws_region=${{ env.AWS_REGION }}" \
+            -var='email_notification_endpoints=["${{ secrets.NOTIFICATION_EMAIL }}"]' \
             -out=tfplan
 
       - name: Terraform Apply
