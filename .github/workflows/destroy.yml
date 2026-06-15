@@ -1,0 +1,91 @@
+name: Destroy Infrastructure
+
+# Manual teardown to control cost: Actions -> Destroy Infrastructure -> Run workflow,
+# choose the environment, and type "destroy" to confirm. Tears down everything
+# terraform manages for that environment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to DESTROY (all its resources are deleted)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      confirm:
+        description: 'Type "destroy" to confirm'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TERRAFORM_VERSION: '1.9.8'
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  destroy:
+    name: Destroy (${{ github.event.inputs.environment }})
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "::error::You must type 'destroy' in the confirm field to proceed. Aborting."
+            exit 1
+          fi
+          echo "Confirmed. Destroying the '${{ github.event.inputs.environment }}' environment..."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ github.event.inputs.environment == 'prod' && secrets.AWS_ROLE_ARN_PROD || github.event.inputs.environment == 'staging' && secrets.AWS_ROLE_ARN_STAGING || secrets.AWS_ROLE_ARN_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Destroy
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Package Lambda functions
+        # terraform evaluates filebase64sha256() on the deployment zips during the
+        # destroy plan, so the packages must exist even to tear down.
+        run: bash scripts/package-lambdas.sh
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Terraform Destroy
+        run: |
+          cd terraform
+          terraform destroy \
+            -var="environment=${{ github.event.inputs.environment }}" \
+            -var="aws_region=${{ env.AWS_REGION }}" \
+            -auto-approve
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Destroy ${{ github.event.inputs.environment }} — ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Note: the LLM prompt template SSM parameter is created outside terraform" >> "$GITHUB_STEP_SUMMARY"
+          echo "(scripts/create_prompt_template.py) and is free-tier, so it is left in place." >> "$GITHUB_STEP_SUMMARY"
