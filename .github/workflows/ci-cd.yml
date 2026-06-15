@@ -381,10 +381,9 @@ jobs:
   deploy-dev:
     name: Deploy to Dev
     runs-on: ubuntu-latest
-    # Auto-deploys on push to main; also runnable manually via "Run workflow" with environment=dev.
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    # Manual-only deploy to keep running costs down: trigger via "Run workflow"
+    # with environment=dev. Merges to main run CI/tests only and never deploy.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev'
     needs: [python-lint, terraform-validate, unit-tests, property-tests, infrastructure-tests]
     environment:
       name: dev
