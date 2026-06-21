@@ -249,8 +249,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Analysis report dict
     """
-    # Extract correlation ID
+    # Extract correlation ID.
+    # correlation_engine returns {status, structuredContext, correlationId}, and
+    # the state machine stores that whole wrapper at $.structuredContext — so the
+    # real context is nested one level deeper. Unwrap it; the correlation_failed
+    # path ({status, error}) and an empty default have no nested key and pass
+    # through unchanged.
     structured_context = event.get("structuredContext", {})
+    if isinstance(structured_context, dict) and "structuredContext" in structured_context:
+        structured_context = structured_context["structuredContext"]
     correlation_id = structured_context.get("incidentId", "unknown")
 
     try:

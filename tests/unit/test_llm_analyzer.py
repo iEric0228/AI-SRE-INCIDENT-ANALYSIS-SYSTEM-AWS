@@ -146,6 +146,62 @@ class TestLambdaHandler:
         assert metadata["tokenUsage"]["input"] > 0
         assert metadata["tokenUsage"]["output"] > 0
 
+    def test_unwraps_correlation_wrapper(
+        self, sample_structured_context, sample_llm_response, mock_bedrock_client, mock_ssm_client
+    ):
+        """Handle the REAL Step Functions shape.
+
+        correlation_engine returns {status, structuredContext, correlationId} and
+        the state machine stores that whole wrapper at $.structuredContext. The
+        handler must unwrap it so (a) incidentId resolves (regression: it reported
+        'unknown') and (b) the Bedrock prompt is built from the clean context, not
+        the wrapper (regression: the LLM saw 'status: success' noise).
+        """
+        # Arrange: the wrapped shape the state machine actually delivers.
+        event = {
+            "eventSource": "cloudwatch",
+            "structuredContext": {
+                "status": "success",
+                "structuredContext": sample_structured_context,
+                "correlationId": "inc-test-001",
+            },
+        }
+
+        mock_ssm_client.get_parameter.return_value = {
+            "Parameter": {"Value": lambda_function.get_default_prompt_template(), "Version": 1}
+        }
+        bedrock_response = {"body": MagicMock()}
+        bedrock_response["body"].read.return_value = json.dumps(
+            {"content": [{"text": json.dumps(sample_llm_response)}], "stop_reason": "end_turn"}
+        ).encode("utf-8")
+        mock_bedrock_client.invoke_model.return_value = bedrock_response
+
+        lambda_function.bedrock_circuit_breaker.state = lambda_function.CircuitState.CLOSED
+        lambda_function.bedrock_circuit_breaker.failure_count = 0
+
+        captured = {}
+        real_construct = lambda_function.construct_prompt
+
+        def spy_construct(template, ctx):
+            captured["ctx"] = ctx
+            return real_construct(template, ctx)
+
+        with (
+            patch(
+                "llm_analyzer.lambda_function.get_bedrock_client", return_value=mock_bedrock_client
+            ),
+            patch("llm_analyzer.lambda_function.get_ssm_client", return_value=mock_ssm_client),
+            patch("llm_analyzer.lambda_function.construct_prompt", side_effect=spy_construct),
+        ):
+            result = lambda_function.lambda_handler(event, None)
+
+        # incidentId resolves from the unwrapped context (was "unknown" before the fix)
+        assert result["incidentId"] == "inc-test-001"
+        # The prompt was built from the clean context, not the wrapper.
+        assert captured["ctx"].get("incidentId") == "inc-test-001"
+        assert "correlationId" not in captured["ctx"]
+        assert "status" not in captured["ctx"]
+
     def test_fallback_on_bedrock_failure(
         self, sample_structured_context, mock_bedrock_client, mock_ssm_client
     ):

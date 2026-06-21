@@ -252,6 +252,26 @@ class TestGetCorrelationId:
         correlation_id = get_correlation_id(event)
         assert correlation_id == "incident-789"
 
+    def test_extract_from_structured_context_wrapper(self):
+        """
+        Test extracting correlation ID from the correlation_engine wrapper.
+
+        The state machine stores {status, structuredContext, correlationId} at
+        $.structuredContext, so the real incidentId is one level deeper.
+
+        Validates: Requirement 11.2 (correlation ID propagation)
+        """
+        event = {
+            "structuredContext": {
+                "status": "success",
+                "structuredContext": {"incidentId": "incident-999", "resource": {}},
+                "correlationId": "incident-999",
+            }
+        }
+
+        correlation_id = get_correlation_id(event)
+        assert correlation_id == "incident-999"
+
     def test_default_to_unknown(self):
         """
         Test that function returns 'unknown' when no incident ID found.
