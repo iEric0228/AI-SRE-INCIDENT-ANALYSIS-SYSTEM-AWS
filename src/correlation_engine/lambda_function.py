@@ -35,6 +35,28 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+def _normalize_sf_input(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Map the real Step Functions payload onto the keys this module reads.
+
+    event_transformer starts the workflow with a *flat* incident event
+    ({"incidentId": ..., "alarmName": ..., "resourceArn": ...}), and the
+    Parallel collectors append their outputs as an ordered array at
+    "collectorResults" ([metrics, logs, deploy-context]). Project that onto the
+    named keys ("incident", "metrics", "logs", "changes") the rest of this
+    module reads, while leaving an already-named payload (unit tests / a future
+    wrapped shape) untouched.
+    """
+    normalized = dict(event)
+    if "incident" not in normalized:
+        normalized["incident"] = event
+    results = event.get("collectorResults")
+    if isinstance(results, list):
+        for label, result in zip(("metrics", "logs", "changes"), results):
+            if isinstance(result, dict):
+                normalized.setdefault(label, result)
+    return normalized
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler for correlation engine.
@@ -46,6 +68,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Structured context with merged and normalized data
     """
+    event = _normalize_sf_input(event)
     correlation_id = event.get("incident", {}).get("incidentId", "unknown")
 
     try:
