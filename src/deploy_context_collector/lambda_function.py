@@ -396,14 +396,14 @@ def parse_resource_arn_for_cloudtrail(resource_arn: str) -> Tuple[str, Optional[
         return "unknown", None
 
     service = parts[2]
-    resource_part = parts[5] if len(parts) > 5 else parts[-1]
+    # Rejoin everything after the account so colon-separated resources survive
+    # (e.g. "function:my-function"); parts[5] alone would be just "function".
+    resource_part = ":".join(parts[5:])
 
     # Extract resource ID based on service
     if service == "lambda":
-        # arn:aws:lambda:region:account:function:function-name
-        resource_id = (
-            resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
-        )
+        # arn:aws:lambda:region:account:function:NAME[:version-or-alias]
+        resource_id = parts[6] if len(parts) > 6 else resource_part.split("/")[-1]
         return service, resource_id
 
     elif service == "ec2":

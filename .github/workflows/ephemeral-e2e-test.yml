@@ -402,18 +402,23 @@ jobs:
           # such as $.alarmName, so nesting them under "incident" breaks
           # StoreIncident. The E2E starts the state machine directly, so it must
           # provide the already-transformed shape.
+          # Coherent Lambda error-rate incident: the alarm name, metric, and
+          # threshold all agree, and resourceArn points at a real function whose
+          # log group we seed below — so the analysis reads like a real incident
+          # instead of flagging a self-contradictory synthetic alarm.
           cat > /tmp/test-event.json << EOF
           {
             "incidentId": "${INCIDENT_ID}",
-            "alarmName": "e2e-test-high-cpu-alarm",
-            "alarmArn": "arn:aws:cloudwatch:${{ env.AWS_REGION }}:${ACCOUNT_ID}:alarm:e2e-test-high-cpu-alarm",
+            "alarmName": "e2e-test-high-error-rate",
+            "alarmArn": "arn:aws:cloudwatch:${{ env.AWS_REGION }}:${ACCOUNT_ID}:alarm:e2e-test-high-error-rate",
             "resourceArn": "${RESOURCE_ARN}",
             "timestamp": "${TIMESTAMP}",
             "ttl": ${TTL},
             "alarmState": "ALARM",
             "metricName": "Errors",
             "namespace": "AWS/Lambda",
-            "alarmDescription": "E2E test alarm - simulated high error rate",
+            "threshold": 5,
+            "alarmDescription": "Lambda error count exceeded 5 in 2 consecutive 1-minute periods",
             "eventSource": "cloudwatch"
           }
           EOF
@@ -421,6 +426,37 @@ jobs:
           echo "incident_id=${INCIDENT_ID}" >> "$GITHUB_OUTPUT"
           echo "Test event:"
           cat /tmp/test-event.json | python -m json.tool
+
+      # Seed the target Lambda's log group with realistic ERROR lines so the
+      # logs collector finds real evidence and the LLM produces a meaningful root
+      # cause (an ephemeral incident has no real load behind it). Non-fatal: if
+      # this fails the pipeline still runs and the analysis falls back to
+      # "no supporting logs".
+      - name: Inject synthetic error logs
+        run: |
+          LOG_GROUP="/aws/lambda/${{ env.EPHEMERAL_PREFIX }}-metrics-collector"
+          LOG_STREAM="e2e-injected-${{ github.run_id }}"
+          echo "Injecting ERROR logs into ${LOG_GROUP} (stream ${LOG_STREAM})"
+          aws logs create-log-group --log-group-name "${LOG_GROUP}" 2>/dev/null || true
+          aws logs create-log-stream --log-group-name "${LOG_GROUP}" --log-stream-name "${LOG_STREAM}" 2>/dev/null || true
+          NOW_MS=$(( $(date -u +%s) * 1000 ))
+          cat > /tmp/log-events.json << EOF
+          [
+            {"timestamp": $(( NOW_MS - 120000 )), "message": "[ERROR] Task timed out after 20.00 seconds"},
+            {"timestamp": $(( NOW_MS - 90000 )), "message": "[ERROR] Runtime.OutOfMemory: process exceeded the 512 MB memory limit"},
+            {"timestamp": $(( NOW_MS - 60000 )), "message": "[ERROR] Unable to reach downstream dependency: connection timed out after 5000ms"},
+            {"timestamp": $(( NOW_MS - 30000 )), "message": "[ERROR] Invocation failed with MemoryError; retries exhausted"}
+          ]
+          EOF
+          if aws logs put-log-events \
+            --log-group-name "${LOG_GROUP}" \
+            --log-stream-name "${LOG_STREAM}" \
+            --log-events file:///tmp/log-events.json; then
+            echo "Injected 4 ERROR log events; waiting 25s for ingestion..."
+            sleep 25
+          else
+            echo "WARNING: log injection failed; analysis will fall back to no-data."
+          fi
 
       - name: Execute Step Functions
         id: sfn-exec

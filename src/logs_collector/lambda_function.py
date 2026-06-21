@@ -355,14 +355,14 @@ def map_resource_arn_to_log_group(resource_arn: str) -> str:
         raise ValueError(f"Invalid ARN format: {resource_arn}")
 
     service = parts[2]
-    resource_part = parts[5] if len(parts) > 5 else parts[-1]
+    # Rejoin everything after the account so colon-separated resources survive
+    # (e.g. "function:my-function"); parts[5] alone would be just "function".
+    resource_part = ":".join(parts[5:])
 
     # Map service to log group pattern
     if service == "lambda":
-        # arn:aws:lambda:region:account:function:function-name
-        function_name = (
-            resource_part.split(":")[-1] if ":" in resource_part else resource_part.split("/")[-1]
-        )
+        # arn:aws:lambda:region:account:function:NAME[:version-or-alias]
+        function_name = parts[6] if len(parts) > 6 else resource_part.split("/")[-1]
         return f"/aws/lambda/{function_name}"
 
     elif service == "ec2":

@@ -375,10 +375,14 @@ def extract_alarm_info(incident: Dict[str, Any]) -> AlarmInfo:
     Returns:
         AlarmInfo object
     """
+    try:
+        threshold = float(incident.get("threshold", 0.0))
+    except (TypeError, ValueError):
+        threshold = 0.0
     return AlarmInfo(
         name=incident.get("alarmName", ""),
         metric=incident.get("metricName", ""),
-        threshold=0.0,  # Threshold not available in current incident format
+        threshold=threshold,
     )
 
 

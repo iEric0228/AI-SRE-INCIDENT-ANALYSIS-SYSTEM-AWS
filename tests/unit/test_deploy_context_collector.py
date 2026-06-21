@@ -416,11 +416,7 @@ class TestParseResourceArnForCloudTrail:
 
         # Assert
         assert service == "lambda"
-        # For Lambda ARN with 7 parts, parts[5] is 'function'
-        # The code splits resource_part by ':' and takes the last element
-        # But resource_part is parts[5] which is just 'function', not 'function:my-function'
-        # So the implementation returns 'function', not 'my-function'
-        assert resource_id == "function"
+        assert resource_id == "my-function"
 
     def test_parse_ec2_arn(self):
         """Test parsing EC2 instance ARN."""
@@ -444,11 +440,7 @@ class TestParseResourceArnForCloudTrail:
 
         # Assert
         assert service == "rds"
-        # For RDS ARN with 7 parts, parts[5] is 'db'
-        # The code splits resource_part by ':' and takes the last element
-        # But resource_part is parts[5] which is just 'db', not 'db:my-database'
-        # So the implementation returns 'db', not 'my-database'
-        assert resource_id == "db"
+        assert resource_id == "my-database"
 
     def test_parse_ecs_arn(self):
         """Test parsing ECS service ARN."""

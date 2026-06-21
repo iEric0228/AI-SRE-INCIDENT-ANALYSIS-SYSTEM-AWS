@@ -114,6 +114,23 @@ class TestRealStepFunctionsShape:
         assert ctx["completeness"]["metrics"] is False
         assert ctx["completeness"]["logs"] is True
 
+    def test_threshold_is_read_from_incident(self):
+        """Alarm threshold is read from the incident (was hardcoded to 0.0)."""
+        now = datetime.utcnow()
+        event = self._sf_event(
+            now,
+            [
+                {"status": "success", "metrics": []},
+                {"status": "success", "logs": [], "totalMatches": 0, "returned": 0},
+                {"status": "success", "changes": []},
+            ],
+        )
+        event["threshold"] = 80
+
+        result = lambda_function.lambda_handler(event, None)
+
+        assert result["structuredContext"]["alarm"]["threshold"] == 80.0
+
 
 class TestLambdaHandler:
     """Tests for the main lambda_handler function."""
