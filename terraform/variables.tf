@@ -287,13 +287,19 @@ variable "enable_xray_tracing" {
 # ============================================================================
 
 variable "bedrock_model_id" {
-  description = "Amazon Bedrock model ID for LLM analysis"
+  description = <<-EOT
+    Amazon Bedrock model ID (or cross-region inference profile ID) for LLM
+    analysis. Current Claude models support only INFERENCE_PROFILE invocation,
+    so use an inference-profile ID such as
+    us.anthropic.claude-haiku-4-5-20251001-v1:0. Legacy on-demand IDs
+    (anthropic.claude-...) are still accepted but most are retired in Bedrock.
+  EOT
   type        = string
-  default     = "anthropic.claude-v2"
+  default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
   validation {
-    condition     = can(regex("^anthropic\\.claude-", var.bedrock_model_id))
-    error_message = "Model ID must be a valid Anthropic Claude model (e.g., anthropic.claude-v2)."
+    condition     = can(regex("^(us\\.|eu\\.|apac\\.|global\\.)?anthropic\\.claude-", var.bedrock_model_id))
+    error_message = "Model ID must be an Anthropic Claude model or inference profile (e.g., us.anthropic.claude-haiku-4-5-20251001-v1:0)."
   }
 }
 
