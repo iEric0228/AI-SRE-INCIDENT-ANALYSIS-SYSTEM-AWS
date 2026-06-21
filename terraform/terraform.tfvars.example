@@ -90,7 +90,7 @@ enable_xray_tracing      = true  # Enable AWS X-Ray tracing
 # LLM Configuration
 # ============================================================================
 
-bedrock_model_id              = "anthropic.claude-v2"
+bedrock_model_id              = "us.anthropic.claude-haiku-4-5-20251001-v1:0"  # inference-profile ID; current Claude models require one
 bedrock_model_temperature     = 0.3    # 0.0 to 1.0 (lower = more deterministic)
 bedrock_max_tokens            = 1000   # Maximum tokens in response
 prompt_template_parameter_name = "/ai-sre-incident-analysis/prompt-template"
