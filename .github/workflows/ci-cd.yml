@@ -145,7 +145,7 @@ jobs:
           name: unit-test-coverage
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report
@@ -446,7 +446,7 @@ jobs:
           echo '```' >> deployment_summary.md
 
       - name: Upload Deployment Summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-summary-dev
           path: terraform/deployment_summary.md
@@ -523,7 +523,7 @@ jobs:
           echo '```' >> deployment_summary.md
 
       - name: Upload Deployment Summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-summary-staging
           path: terraform/deployment_summary.md
@@ -605,7 +605,7 @@ jobs:
           echo '```' >> deployment_summary.md
 
       - name: Upload Deployment Summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-summary-prod
           path: terraform/deployment_summary.md
