@@ -21,6 +21,100 @@ import pytest
 from correlation_engine import lambda_function
 
 
+class TestRealStepFunctionsShape:
+    """Correlation must read the *actual* Step Functions payload.
+
+    event_transformer starts the workflow with a flat incident event, and the
+    Parallel collectors append their outputs as an ordered array at
+    "collectorResults" ([metrics, logs, deploy-context]) - NOT the nested
+    {"incident": ...} / named-key shape the other tests use. These guard against
+    the production shape mismatch that returned an empty 'unknown' incident.
+    """
+
+    def _sf_event(self, now, collector_results):
+        return {
+            "incidentId": "inc-real-001",
+            "alarmName": "HighCPU",
+            "alarmArn": "arn:aws:cloudwatch:us-east-1:123456789012:alarm:HighCPU",
+            "resourceArn": "arn:aws:ec2:us-east-1:123456789012:instance/i-0abcdef",
+            "timestamp": now.isoformat() + "Z",
+            "metricName": "CPUUtilization",
+            "namespace": "AWS/EC2",
+            "collectorResults": collector_results,
+        }
+
+    def test_flat_event_with_collector_array_is_correlated(self):
+        now = datetime.utcnow()
+        event = self._sf_event(
+            now,
+            [
+                {
+                    "status": "success",
+                    "metrics": [
+                        {
+                            "metricName": "CPUUtilization",
+                            "namespace": "AWS/EC2",
+                            "datapoints": [
+                                {
+                                    "timestamp": now.isoformat() + "Z",
+                                    "value": 95.0,
+                                    "unit": "Percent",
+                                }
+                            ],
+                            "statistics": {"avg": 95.0, "max": 95.0, "min": 95.0},
+                        }
+                    ],
+                    "collectionDuration": 1.0,
+                },
+                {
+                    "status": "success",
+                    "logs": [
+                        {
+                            "timestamp": now.isoformat() + "Z",
+                            "logLevel": "ERROR",
+                            "message": "CPU saturated",
+                        }
+                    ],
+                    "totalMatches": 1,
+                    "returned": 1,
+                },
+                {"status": "success", "changes": []},
+            ],
+        )
+
+        result = lambda_function.lambda_handler(event, None)
+
+        assert result["status"] == "success"
+        ctx = result["structuredContext"]
+        # The bug returned "unknown"/empty here even with fully valid input.
+        assert ctx["incidentId"] == "inc-real-001"
+        assert ctx["resource"]["arn"].endswith("instance/i-0abcdef")
+        assert ctx["alarm"]["name"] == "HighCPU"
+        assert ctx["completeness"] == {"metrics": True, "logs": True, "changes": True}
+        assert ctx["metrics"]
+        assert ctx["logs"]
+
+    def test_flat_event_with_failed_collector_marks_incomplete(self):
+        now = datetime.utcnow()
+        event = self._sf_event(
+            now,
+            [
+                {"status": "failed", "error": "Metrics collection failed"},
+                {"status": "success", "logs": [], "totalMatches": 0, "returned": 0},
+                {"status": "success", "changes": []},
+            ],
+        )
+
+        result = lambda_function.lambda_handler(event, None)
+        ctx = result["structuredContext"]
+
+        # Incident metadata still resolves from the flat fields...
+        assert ctx["incidentId"] == "inc-real-001"
+        # ...and completeness reflects the failed metrics collector.
+        assert ctx["completeness"]["metrics"] is False
+        assert ctx["completeness"]["logs"] is True
+
+
 class TestLambdaHandler:
     """Tests for the main lambda_handler function."""
 
