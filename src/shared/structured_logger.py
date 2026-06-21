@@ -155,10 +155,16 @@ def get_correlation_id(event: Dict[str, Any]) -> str:
         if "incidentId" in event["incident"]:
             return str(event["incident"]["incidentId"])
 
-    # Try in structuredContext
-    if "structuredContext" in event and isinstance(event["structuredContext"], dict):
-        if "incidentId" in event["structuredContext"]:
-            return str(event["structuredContext"]["incidentId"])
+    # Try in structuredContext. This handles both the clean context and the
+    # correlation_engine wrapper {status, structuredContext, correlationId} that
+    # the state machine stores at $.structuredContext (real id one level deeper).
+    sc = event.get("structuredContext")
+    if isinstance(sc, dict):
+        if "incidentId" in sc:
+            return str(sc["incidentId"])
+        nested = sc.get("structuredContext")
+        if isinstance(nested, dict) and "incidentId" in nested:
+            return str(nested["incidentId"])
 
     # Default to unknown
     return "unknown"
