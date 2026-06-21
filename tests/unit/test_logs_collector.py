@@ -219,9 +219,8 @@ class TestLambdaHandler:
         assert len(result["logs"]) == 1
 
         # Verify the correct log group name was used
-        # Note: Current implementation extracts 'function' from Lambda ARN
         call_args = mock_logs_client.filter_log_events.call_args
-        assert call_args[1]["logGroupName"] == "/aws/lambda/function"
+        assert call_args[1]["logGroupName"] == "/aws/lambda/my-function"
 
 
 class TestMapResourceArnToLogGroup:
@@ -236,8 +235,7 @@ class TestMapResourceArnToLogGroup:
         log_group = lambda_function.map_resource_arn_to_log_group(arn)
 
         # Assert
-        # Note: Current implementation extracts 'function' from parts[5], not the full function name
-        assert log_group == "/aws/lambda/function"
+        assert log_group == "/aws/lambda/my-function"
 
     def test_map_lambda_arn_with_version(self):
         """Test mapping Lambda function ARN with version to log group."""
@@ -247,9 +245,8 @@ class TestMapResourceArnToLogGroup:
         # Act
         log_group = lambda_function.map_resource_arn_to_log_group(arn)
 
-        # Assert
-        # Note: Current implementation extracts 'function' from parts[5]
-        assert log_group == "/aws/lambda/function"
+        # Assert: the version/alias suffix is ignored; the log group is per-function
+        assert log_group == "/aws/lambda/my-function"
 
     def test_map_ec2_arn(self):
         """Test mapping EC2 instance ARN to log group."""
@@ -271,8 +268,7 @@ class TestMapResourceArnToLogGroup:
         log_group = lambda_function.map_resource_arn_to_log_group(arn)
 
         # Assert
-        # Note: Current implementation extracts 'db' from parts[5], not the full database name
-        assert log_group == "/aws/rds/instance/db/error"
+        assert log_group == "/aws/rds/instance/my-database/error"
 
     def test_map_ecs_arn(self):
         """Test mapping ECS service ARN to log group."""
